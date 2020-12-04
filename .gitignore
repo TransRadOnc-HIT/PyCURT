@@ -1,0 +1,7 @@
+*.pyc
+*.*project
+*.*egg*.*
+build/
+pycurt.egg-info/
+dist/
+src/
