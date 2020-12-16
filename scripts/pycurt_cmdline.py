@@ -78,12 +78,12 @@ def main():
 
         workflow = DataCuration(
             sub_id='', input_dir=BASE_DIR, work_dir=ARGS.work_dir,
-            process_rt=True)
+            process_rt=True, cores=ARGS.num_cores)
         wf = workflow.workflow_setup(
             data_sorting=True, subject_name_position=ARGS.subject_name_position,
             renaming=ARGS.renaming, mr_classiffication=not ARGS.no_mrclass,
             checkpoints=checkpoints, sub_checkpoints=sub_checkpoints)
-        workflow.runner(wf, cores=ARGS.num_cores)
+        workflow.runner(wf)
         BASE_DIR = os.path.join(ARGS.work_dir, 'workflows_output', 'Sorted_Data')
         sub_list = os.listdir(BASE_DIR)
 
@@ -94,20 +94,22 @@ def main():
             workflow = DataCuration(
                 sub_id=sub_id, input_dir=BASE_DIR, work_dir=ARGS.work_dir,
                 process_rt=True, local_basedir=ARGS.local_basedir,
-                local_project_id=ARGS.local_project_id, local_sink=ARGS.local_sink)
+                local_project_id=ARGS.local_project_id, local_sink=ARGS.local_sink,
+                cores=ARGS.num_cores)
             wf = workflow.workflow_setup()
             if wf.list_node_names():
-                workflow.runner(wf, cores=ARGS.num_cores)
+                workflow.runner(wf)
             if ARGS.extract_rts:
                 wd = os.path.join(ARGS.work_dir, 'workflows_output', 'DataCuration')
                 workflow = RadioTherapy(
                     sub_id=sub_id, input_dir=wd, work_dir=ARGS.work_dir,
                     process_rt=True, roi_selection=ARGS.select_rts,
                     local_basedir=ARGS.local_basedir,
-                    local_project_id=ARGS.local_project_id, local_sink=ARGS.local_sink)
+                    local_project_id=ARGS.local_project_id, local_sink=ARGS.local_sink,
+                    cores=ARGS.num_cores)
                 wf = workflow.workflow_setup()
                 if wf.list_node_names():
-                    workflow.runner(wf, cores=ARGS.num_cores)
+                    workflow.runner(wf)
 
     print('Done!')
 

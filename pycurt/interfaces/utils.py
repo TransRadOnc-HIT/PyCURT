@@ -665,13 +665,14 @@ class FolderMerge(BaseInterface):
         
         input_list = self.inputs.input_list
         out_dir = os.path.abspath(self.inputs.out_folder)
-        
-        session_dict = {}
-        session_dict['RT'] = []
-        session_dict['CT'] = []
-        session_dict['MR'] = []
+
+        toreprocess = []
 
         for directories in input_list:
+            session_dict = {}
+            session_dict['RT'] = []
+            session_dict['CT'] = []
+            session_dict['MR'] = []
             mr_dir = directories[0]
             rt_dir = directories[1]
             if mr_dir is None or not os.path.isdir(mr_dir):
@@ -719,26 +720,80 @@ class FolderMerge(BaseInterface):
                             session_dict['RT'].append([os.path.join(
                             out_dir, sub_name,folder_name),
                             dt.strptime(folder_name.split('_RT')[0], '%Y%m%d')])
-
-        self.session_labelling(session_dict)
+            if session_dict['RT']:
+                self.session_labelling(session_dict)
+            else:
+                toreprocess.append([session_dict['CT'], session_dict['MR']])
+        if toreprocess:
+            self.ct_labelling(toreprocess, out_dir)
 
         return runtime
 
+    def ct_labelling(self, toreprocess, out_dir):
+
+        rtct_sds = []
+        for path, _, files in os.walk(out_dir):
+            for f in files:
+                if f == 'rtct_series_description.txt':
+                    with open(os.path.join(path, f), 'r') as f:
+                        rtct_sds.append(f.read())
+#                         sds = [x.strip() for x in f.read()]
+#                     rtct_sds =  rtct_sds + sds
+        for tp in toreprocess:
+            label = False
+            session_dict = {}
+            session_dict['RT'] = []
+            session_dict['CT'] = []
+            session_dict['MR'] = []
+            ct_sessions, mr_sessions = tp
+            for ct in sorted(ct_sessions):
+                ct_path = ct[0]
+                ct_dirs = sorted(glob.glob(ct_path+'/CT/*'))
+                for ct_dir in ct_dirs:
+                    sd = self.get_rtct_description(ct_dir, write2file=False)
+                    if sd in rtct_sds:
+                        ct_sessions.remove(ct)
+                        ct_dirs.remove(ct_dir)
+                        ct_folder_name = ct_dir.split('/')[-1]
+                        new_name = (ct_dir.replace(ct_folder_name, '1-'+ct_folder_name)
+                                    .replace('/CT/', '/RTCT/').replace('_CT', '_RT'))
+                        shutil.move(ct_dir, new_name)
+                        for d in ct_dirs:
+                            if not os.path.isdir(new_name.split('/RTCT')[0]+'/Other_CT'):
+                                os.makedirs(new_name.split('/RTCT')[0]+'/Other_CT')
+                            shutil.move(d, new_name.split('/RTCT')[0]+'/Other_CT/')
+                        session_dict['RT'].append([new_name.split('/RTCT')[0], ct[1]])
+                        shutil.rmtree(ct_path)
+                        label = True
+                        break
+            session_dict['CT'] = ct_sessions
+            session_dict['MR'] = mr_sessions
+            if label:
+                self.session_labelling(session_dict)
+            else:
+                iflogger.info('Could not identify any planning CT in the _CT folders '
+                              'based on CT series descriptions.')
+        
     def session_labelling(self, session_dict):
         
         rt_sessions = sorted(session_dict['RT'])
         ct_sessions = sorted(session_dict['CT'])
         mr_sessions = sorted(session_dict['MR'])
+
         toremove = []
         if len(rt_sessions) > 1:
             rt_ref = rt_sessions[0]
+            self.get_rtct_description(rt_ref[0])
             for i, rt_session in enumerate(rt_sessions[1:]):
+                self.get_rtct_description(rt_session[0]+'/RTCT/1-*')
                 diff = (rt_session[1]-rt_ref[1]).days
                 if diff <= 42:
                     toremove.append(rt_session)
                     ct_sessions.append(rt_session)
                 else:
                     rt_ref = rt_session
+        else:
+            self.get_rtct_description(rt_sessions[0][0]+'/RTCT/1-*')
         for f in toremove:
             rt_sessions.remove(f)
         
@@ -760,10 +815,15 @@ class FolderMerge(BaseInterface):
             mr_sessions_groups.append(mr_sessions)
             ct_sessions_groups.append(ct_sessions)
         
+        sessions = {}
         for i, rt in enumerate(rt_sessions):
+            rt_path, rt_date = rt
+            basepath = '/'.join(rt_path.split('/')[:-1])
+            basename = basepath+'_{}'.format(i+1)
+            sessions[basename] = [rt_path]
+#                 self.get_rtct_description(rt_path)
             mris = mr_sessions_groups[i]
             cts = ct_sessions_groups[i]
-            _, rt_date = rt
             if mris:
                 mrtp = None
                 diff = np.inf
@@ -779,19 +839,24 @@ class FolderMerge(BaseInterface):
                 if mrtp is not None:
                     shutil.move(mrtp[0], mrtp[0]+'_MR-RT')
                     mris.remove(mrtp)
+                    sessions[basename].append(mrtp[0]+'_MR-RT')
                 for mr in mris:
                     mr_path, mr_date = mr
                     if mr_date < rt_date:
                         shutil.move(mr_path, mr_path+'_pre-RT')
+                        sessions[basename].append(mr_path+'_pre-RT')
                     elif mr_date > rt_date and mr_date <= rt_date+timedelta(days=42):
                         shutil.move(mr_path, mr_path+'_post-RT')
+                        sessions[basename].append(mr_path+'_post-RT')
                     elif mr_date > rt_date+timedelta(days=42):
                         shutil.move(mr_path, mr_path+'_FU')
+                        sessions[basename].append(mr_path+'_FU')
             if cts:
                 for ct in cts:
                     ct_path, ct_date = ct
                     ct_outpath = ct_path.split('_CT')[0]
                     if ct_date < rt_date:
+                        sessions[basename].append(ct_outpath+'_pre-RT')
                         try:
                             shutil.move(ct_path, ct_outpath+'_pre-RT')
                         except:
@@ -800,6 +865,7 @@ class FolderMerge(BaseInterface):
                                 fname = f.split('/')[-1]
                                 shutil.move(f, ct_outpath+'_pre-RT'+'/{}'.format(fname))
                     elif ct_date > rt_date and ct_date <= rt_date+timedelta(days=42):
+                        sessions[basename].append(ct_outpath+'_post-RT')
                         try:
                             shutil.move(ct_path, ct_outpath+'_post-RT')
                         except:
@@ -808,13 +874,38 @@ class FolderMerge(BaseInterface):
                                 fname = f.split('/')[-1]
                                 shutil.move(f, ct_outpath+'_post-RT'+'/{}'.format(fname))
                     elif ct_date > rt_date+timedelta(days=42):
+                        sessions[basename].append(ct_outpath+'_FU')
                         try:
                             shutil.move(ct_path, ct_outpath+'_FU')    
                         except:
                             ff = sorted(glob.glob(ct_path+'/*'))
                             for f in ff:
                                 fname = f.split('/')[-1]
-                                shutil.move(f, ct_outpath+'_FU'+'/{}'.format(fname))            
+                                shutil.move(f, ct_outpath+'_FU'+'/{}'.format(fname))
+            sessions[basename] = list(set(sessions[basename]))
+        if len(sessions) > 1:
+            for key in sessions:
+                if not os.path.isdir(key):
+                    os.makedirs(key)
+                for session in sessions[key]:
+                    shutil.move(session, key)
+            shutil.rmtree(basepath)
+                
+
+    def get_rtct_description(self, rt_dir, write2file=True):
+        try:
+            rtct = sorted(glob.glob(rt_dir+'/*.dcm'))[0]
+            hd = pydicom.read_file(rtct)
+            sd = hd.SeriesDescription
+            sd = sd.lower().replace(' ', '').replace('.', '')
+            if write2file:
+                wdir = rt_dir.split('RTCT')[0]
+                with open(wdir+'/rtct_series_description.txt', 'w') as f:
+                    f.write(sd)
+            else:
+                return sd
+        except:
+            iflogger.info('No RTCT series description available.')
 
     def _list_outputs(self):
         outputs = self._outputs().get()

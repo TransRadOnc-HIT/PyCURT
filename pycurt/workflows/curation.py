@@ -15,25 +15,27 @@ POSSIBLE_SEQUENCES = ['t1', 'ct1', 't1km', 't2', 'flair', 'adc', 'swi', 'rtct',
 
 class DataCuration(BaseWorkflow):
     
-    def __init__(self, **kwargs):
+    @staticmethod
+    def workflow_inputspecs():
 
-        super().__init__(**kwargs)
-        input_specs = {x: {'format': 'DICOM', 'processed': False}
-                       for x in POSSIBLE_SEQUENCES}
-        output_specs = {x: {'format': 'NIFTI', 'processed': 'DataCuration'}
-                        for x in POSSIBLE_SEQUENCES}
-        self.input_specs.update(input_specs)
-        self.output_specs.update(output_specs)
+        input_specs = {}
+        input_specs['format'] = ''
+        input_specs['dependencies'] = {}
+        input_specs['suffix'] = ['']
+        input_specs['prefix'] = []
+        input_specs['data_formats'] = {'': ''}
 
-    def workflow_inputspecs(self):
+        return input_specs
 
-        self.input_specs = {}
-        self.input_specs['format'] = 'DICOM'
-    
-    def workflow_outputspecs(self):
+    @staticmethod
+    def workflow_outputspecs():
 
-        self.output_specs = {}
-        self.output_specs['format'] = 'NIFTI_GZ'
+        output_specs = {}
+        output_specs['format'] = '.nii.gz'
+        output_specs['suffix'] = ['']
+        output_specs['prefix'] = []
+
+        return output_specs
 
     def sorting_workflow(self, subject_name_position=-3, renaming=False,
                          mr_classiffication=True, checkpoints=None,
@@ -47,7 +49,7 @@ class DataCuration(BaseWorkflow):
                                "datasink")
 
         file_check = nipype.Node(interface=FileCheck(), name='fc')
-        file_check.inputs.input_dir = self.base_dir
+        file_check.inputs.input_dir = self.input_dir
         file_check.inputs.subject_name_position = subject_name_position
         file_check.inputs.renaming = renaming
         prep = nipype.MapNode(interface=FolderPreparation(), name='prep',
@@ -110,10 +112,8 @@ class DataCuration(BaseWorkflow):
 
         for key in toprocess:
             files = []
-            if toprocess[key]['ref'] is not None:
-                files.append('ref')
-            if toprocess[key]['other'] is not None:
-                files = files + toprocess[key]['other']
+            if toprocess[key]['scans'] is not None:
+                files = files + toprocess[key]['scans']
             for el in files:
                 el = el.strip(self.extention)
                 node_name = '{0}_{1}'.format(key, el)

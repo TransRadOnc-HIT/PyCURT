@@ -2,6 +2,6 @@
 *.*project
 *.*egg*.*
 build/
-pycurt.egg-info/
+PyCURT.egg-info/
 dist/
 src/
