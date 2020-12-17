@@ -85,7 +85,7 @@ def main():
             checkpoints=checkpoints, sub_checkpoints=sub_checkpoints)
         workflow.runner(wf)
         BASE_DIR = os.path.join(ARGS.work_dir, 'workflows_output', 'Sorted_Data')
-        sub_list = os.listdir(BASE_DIR)
+        sub_list, BASE_DIR = create_subject_list(BASE_DIR, subjects_to_process=[])
 
     if not ARGS.no_data_curation:
         for sub_id in sub_list:
