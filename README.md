@@ -14,7 +14,7 @@ Before installing PyCURT, there are two external tools that need to be installed
 2. [plastimatch](https://www.plastimatch.org/) which is required to process RT data. You can download pre-compiled binaries or build it from source.
 
 Once those two tools are installed, you can install PyCURT. You can do it by typing the following few steps in a terminal:
-1. Clone this repository, `git clone https://github.com/TRO-HIT/PyCURT.git`.
+1. Clone this repository, `git clone https://github.com/TransRadOnc-HIT/PyCURT.git`.
 2. cd into the cloned directory, `cd PyCURT`.
 3. Create a virtual (or conda) environment. With anaconda you can do it by typing `conda create -n pycurt python=3.7`.
 4. Activate conda environment, `conda activate pycurt`.
