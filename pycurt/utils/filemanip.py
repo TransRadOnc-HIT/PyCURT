@@ -15,7 +15,23 @@ def mergedict(a, b):
     return a
 
 
-def extract_middleSlice(image):
+def extract_middleSlice(image, scan):
+    
+    
+    x,y,z = image.shape
+    s = smallest(x,y,z)
+    if (s==z and scan == 3) or scan == 2:
+        ms= math.ceil(image.shape[2]/2)-1
+        return image[:, :, ms].astype('float32')
+    elif (s==y and scan == 3) or scan == 1:
+        ms=math.ceil(image.shape[1]/2)-1
+        return image[:, ms, :].astype('float32')
+    else:
+        ms= math.ceil(image.shape[0]/2)-1
+        return image[ms, :, :].astype('float32')
+    
+
+def extract_middleSlice_old(image):
     
     x, y, z = image.shape
     s = smallest(x,y,z)

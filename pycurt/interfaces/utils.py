@@ -577,7 +577,8 @@ class FolderSortingInputSpec(BaseInterfaceInputSpec):
 class FolderSortingOutputSpec(TraitedSpec):
     
     out_folder = Directory(help='Sorted folder.')
-    mr_images = traits.List(help='List of MR images to be classified using MRCLASS')
+    for_inference = traits.Dict(help='Dictionary of images to be classified using '
+                                'mrclass or bpclass.')
 
 
 class FolderSorting(BaseInterface):
@@ -590,10 +591,13 @@ class FolderSorting(BaseInterface):
         input_dir = self.inputs.input_dir
         out_dir = os.path.abspath(self.inputs.out_folder)
 
-        modality_List = ['RTDOSE','CT','RTSTRUCT','RTPLAN', 'PET']
+        modality_list_rt = ['RTDOSE', 'RTSTRUCT', 'RTPLAN', 'PET', 'CT']
+        modality_list_inference = ['MR', 'OT']
         
         images=glob.glob(input_dir+'/*/*/*')
-        for_inference=[]
+        for_inference={}
+        for_inference['MR'] = []
+        for_inference['CT'] = []
 
         for i in images:
             if os.path.isdir(i):
@@ -608,9 +612,17 @@ class FolderSorting(BaseInterface):
                 modality_check = ''
             if modality_check == 'RTSS':
                 modality_check = 'RTSTRUCT'
-            if modality_check in modality_List:
-                label_move_image(i, modality_check, out_dir)
-            elif modality_check=='MR' or modality_check=='OT':
+            if modality_check in modality_list_rt:
+                new_image, i = label_move_image(i, modality_check, out_dir)
+                if modality_check == 'CT':
+                    converter = DicomConverter(new_image)
+                    nifti_image = converter.convert(rename_dicom=True, force=True)
+                    if nifti_image is not None:
+                        for_inference['CT'].append(nifti_image)
+                    else:
+                        label_move_image(i, 'error_converting', out_dir)
+                        iflogger.info('Error converting', str(new_image))
+            elif modality_check in modality_list_inference:
                 #checking for duplicates or localizer
                 new_image, i = label_move_image(i, '', out_dir,
                                                 renaming=False)
@@ -624,7 +636,7 @@ class FolderSorting(BaseInterface):
                     converter = DicomConverter(new_image)
                     nifti_image = converter.convert(rename_dicom=True)
                     if nifti_image is not None:
-                        for_inference.append(nifti_image)
+                        for_inference['MR'].append(nifti_image)
                     else:
                         label_move_image(i, 'error_converting', out_dir)
                         iflogger.info('Error converting', str(new_image))
@@ -639,7 +651,7 @@ class FolderSorting(BaseInterface):
         if isdefined(self.inputs.out_folder):
             outputs['out_folder'] = os.path.abspath(
                 self.inputs.out_folder)
-        outputs['mr_images'] = self.for_inference
+        outputs['for_inference'] = self.for_inference
 
         return outputs
 

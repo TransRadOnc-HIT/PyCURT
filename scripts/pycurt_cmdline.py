@@ -81,8 +81,7 @@ def main():
             process_rt=True, cores=ARGS.num_cores)
         wf = workflow.workflow_setup(
             data_sorting=True, subject_name_position=ARGS.subject_name_position,
-            renaming=ARGS.renaming, mr_classiffication=not ARGS.no_mrclass,
-            checkpoints=checkpoints, sub_checkpoints=sub_checkpoints)
+            renaming=ARGS.renaming, mr_classiffication=not ARGS.no_mrclass)
         workflow.runner(wf)
         BASE_DIR = os.path.join(ARGS.work_dir, 'workflows_output', 'Sorted_Data')
         sub_list, BASE_DIR = create_subject_list(BASE_DIR, subjects_to_process=[])

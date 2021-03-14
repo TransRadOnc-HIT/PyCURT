@@ -6,12 +6,34 @@ from nipype.interfaces.dcm2nii import Dcm2niix
 from pycurt.interfaces.plastimatch import DoseConverter
 from core.workflows.base import BaseWorkflow
 from pycurt.interfaces.utils import FolderPreparation, FolderSorting
-from pycurt.interfaces.custom import RTDataSorting, MRClass
+from pycurt.interfaces.custom import RTDataSorting, ImageClassification
 from nipype.interfaces.utility import Merge
 
 
 POSSIBLE_SEQUENCES = ['t1', 'ct1', 't1km', 't2', 'flair', 'adc', 'swi', 'rtct',
                       'rtdose', 'rtplan', 'rtstruct']
+
+PARENT_DIR =  '/media/fsforazz/Samsung_T5/mr_class/'
+
+bp_cp = {'abd-pel':PARENT_DIR+'/checkpoints_new/bp-class/abd-pel_other_09402.pth',
+                'lung':PARENT_DIR+'/checkpoints_new/bp-class/lung_other_09957.pth',
+                'hnc':PARENT_DIR+'/checkpoints_new/bp-class/hnc_other_09974.pth',
+                'wb':PARENT_DIR+'/checkpoints_new/bp-class/wb_other_09775.pth'
+                   }
+
+bp_sub_cp = {
+                'wb':PARENT_DIR + '/checkpoints_new/bp-class/wb_wbh0_09213.pth',
+                'hnc': PARENT_DIR + '/checkpoints_new/bp-class/brain_hnc_0.9425.pth',
+}
+
+mr_cp = {'ADC':PARENT_DIR+'/checkpoints_new/mr-abd/checkpoint_ADCvall_anal_11112019_0995_nodataaug.pth',
+                'T1':PARENT_DIR+'/checkpoints_new/mr-abd/checkpoint_T1vall_anal_11112019_08788_nodataaug.pth',
+                'T2':PARENT_DIR+'/checkpoints_new/mr-abd/checkpoint_T2vall_anal_11112019_08789_nodataaug.pth'
+                   }
+
+mr_sub_cp = {
+                'T1':PARENT_DIR + '/checkpoints_new/mr-abd/checkpoint_T1vT1Km_anal_11112019_0882_nodataaug.pth',
+}
 
 class DataCuration(BaseWorkflow):
     
@@ -38,8 +60,12 @@ class DataCuration(BaseWorkflow):
         return output_specs
 
     def sorting_workflow(self, subject_name_position=-3, renaming=False,
-                         mr_classiffication=True, checkpoints=None,
-                         sub_checkpoints=None):
+                         mr_classiffication=True, mrclass_cp=mr_cp,
+                         mrclass_sub_cp=mr_sub_cp, bp_class_cp=bp_cp,
+                         bp_class_sub_cp=bp_sub_cp, bp='abd-pel',):
+
+        if bp not in ['hnc', 'abd-pel'] and mr_classiffication:
+            mr_classiffication = False
 
         nipype_cache = os.path.join(self.nipype_cache, 'data_sorting')
         result_dir = self.result_dir
@@ -56,18 +82,26 @@ class DataCuration(BaseWorkflow):
                               iterfield=['input_list'])
         sort = nipype.MapNode(interface=FolderSorting(), name='sort',
                               iterfield=['input_dir'])
+        bp_class = nipype.MapNode(interface=ImageClassification(),
+                                  name='bpclass',
+                                  iterfield=['images2label'])
+        bp_class.inputs.checkpoints = bp_class_cp
+        bp_class.inputs.sub_checkpoints = bp_class_sub_cp
+        bp_class.inputs.body_part = bp
+        bp_class.inputs.network = 'bpclass'
         mr_rt_merge = nipype.MapNode(interface=Merge(2), name='mr_rt_merge',
                                     iterfield=['in1', 'in2'])
         mr_rt_merge.inputs.ravel_inputs = True
         merging = nipype.Node(interface=FolderMerge(), name='merge')
         if mr_classiffication:
-            if checkpoints is None or sub_checkpoints is None:
+            if mrclass_cp is None or mrclass_sub_cp is None:
                 raise Exception('MRClass weights were not provided, MR image '
                                 'classification cannot be performed!')
-            mrclass = nipype.MapNode(interface=MRClass(), name='mrclass',
-                                     iterfield=['mr_images'])
-            mrclass.inputs.checkpoints = checkpoints
-            mrclass.inputs.sub_checkpoints = sub_checkpoints
+            mrclass = nipype.MapNode(interface=ImageClassification(), name='mrclass',
+                                     iterfield=['images2label', 'out_folder'])
+            mrclass.inputs.checkpoints = mrclass_cp
+            mrclass.inputs.sub_checkpoints = mrclass_sub_cp
+            mrclass.inputs.network = 'mrclass'
         else:
             mr_rt_merge.inputs.in1 = None
         rt_sorting = nipype.MapNode(interface=RTDataSorting(), name='rt_sorting',
@@ -76,8 +110,10 @@ class DataCuration(BaseWorkflow):
         workflow.connect(file_check, 'out_list', prep, 'input_list')
         workflow.connect(prep, 'out_folder', sort, 'input_dir')
         workflow.connect(sort, 'out_folder', rt_sorting, 'input_dir')
+        workflow.connect(sort, 'for_inference', bp_class, 'images2label')
         if mr_classiffication:
-            workflow.connect(sort, 'mr_images', mrclass, 'mr_images')
+            workflow.connect(bp_class, 'labeled_images', mrclass, 'images2label')
+            workflow.connect(bp_class, 'out_folder', mrclass, 'out_folder')
             workflow.connect(mrclass, 'out_folder', mr_rt_merge, 'in1')
 
             workflow.connect(rt_sorting, 'out_folder', mr_rt_merge, 'in2')
@@ -201,14 +237,14 @@ class DataCuration(BaseWorkflow):
         return workflow
 
     def workflow_setup(self, data_sorting=False, subject_name_position=-3,
-                       renaming=False, mr_classiffication=True, checkpoints=None,
-                       sub_checkpoints=None):
+                       renaming=False, mr_classiffication=True, mrclass_cp=mr_cp,
+                       mrclass_sub_cp=mr_sub_cp):
 
         if data_sorting:
             workflow = self.sorting_workflow(
                 subject_name_position=subject_name_position,
                 renaming=renaming, mr_classiffication=mr_classiffication,
-                checkpoints=checkpoints, sub_checkpoints=sub_checkpoints)
+                mrclass_cp=mrclass_cp, mrclass_sub_cp=mrclass_sub_cp)
 
         else:
             workflow = self.convertion_workflow()

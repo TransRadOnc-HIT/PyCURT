@@ -24,11 +24,10 @@ def download_mrclass_weights(weights_dir=None,
     checkpoints['T1'] = [x for x in weights if 'T1vsAll' in x][0]
     checkpoints['T2'] = [x for x in weights if 'T2vsAll' in x][0]
     checkpoints['FLAIR'] = [x for x in weights if 'FLAIRvsAll' in x][0]
-    checkpoints['DIFF'] = [x for x in weights if 'ADCvsAll' in x][0]
+    checkpoints['ADC'] = [x for x in weights if 'ADCvsAll' in x][0]
     checkpoints['SWI'] = [x for x in weights if 'SWIvsAll' in x][0]
     
     sub_checkpoints['T1'] = [x for x in weights if 'T1vsT1KM' in x][0]
-    sub_checkpoints['ADC'] = [x for x in weights if 'ADCvsDiff' in x][0]
     
     return checkpoints, sub_checkpoints
 
