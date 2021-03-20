@@ -1,9 +1,11 @@
-"Script to run the PyCURT from command line"
+"Script to run PyCURT data sorting and/or curation from command line"
 import os
 import argparse
 from pycurt.workflows.curation import DataCuration
 from pycurt.workflows.rt import RadioTherapy
-from pycurt.utils.config import create_subject_list, download_mrclass_weights
+from pycurt.utils.config import (
+    create_subject_list, download_mrclass_weights,
+    parameters_config, check_free_space)
 
 
 def main():
@@ -20,97 +22,69 @@ def main():
                               'will run linearly.'))
     PARSER.add_argument('--data_sorting', '-ds', action='store_true',
                         help=('Whether or not to sort the data before convertion. '
-                              'Default is False'))
-    PARSER.add_argument('--no-data_curation', '-ndc', action='store_true',
-                        help=('Whether or not to run data curation after sorting. '
-                              'By default it will run.'))
-    PARSER.add_argument('--no-mrclass', '-nmc', action='store_true',
-                        help=('Whether or not to classify MR images using MRClass. '
-                              'By default it will run.'))
-    PARSER.add_argument('--renaming', action='store_true', 
-                        help='Whether or not to use the information stored'
-                           'in the DICOM header to rename the subject and sessions '
-                           'folders. If False, the file path will be splitted '
-                           'and the subject name will be taken from there. In this '
-                           'case, the subject-name-position must be provided.'
-                           'Default is False.')
+                              'If not, the software assumes you ran the folder sorting '
+                              'before using PyCURT. Default is False'))
     PARSER.add_argument('--subject-name-position', '-np', type=int, default=-3,
-                        help=('If renaming is False, the position of the subject ID '
+                        help=('The position of the subject ID '
                               'in the image path has to be specified (assuming it will'
                               ' be the same for all the files). For example, '
-                              'the position in the file called /mnt/sdb/tosort/sub1/'
-                              'session1/image.dcm, will be 3 (or -3, remember that in Python'
+                              'the position in the  subject ID (sub1) for a file called '
+                              '"/mnt/sdb/tosort/sub1/session1/image.dcm", will be 4 '
+                              '(or -3, remember that in Python'
                               ' numbering starts from 0). By default, is the third'
                               ' position starting from the end of the path.'))
-    PARSER.add_argument('--extract-rts', action='store_true', 
-                        help='Whether or not to extract structures from the RT structure'
-                           ' set. Default is False.')
-    PARSER.add_argument('--select-rts', action='store_true', 
-                        help=('Whether or not to extract only the structure, within the RTStruct, '
-                              'with the highest overlap with the dose distribution.'
-                              ' Default is False.'))
-    PARSER.add_argument('--local-sink', action='store_true', 
-                        help=('Whether or not to save all the results in a common database. '
-                              'If you enable this, the outputs from all the different workflows '
-                              'will be saved in one folder, keeping track of what is added '
-                              'every time to avoid recalculation. If this is enabled, '
-                              '--local-basedir and --local-project-id have to be supplied.'
-                              'Default is False.'))
-    PARSER.add_argument('--local-project-id', '-lpid', type=str,
-                        help=('Local project ID. Name of the project that will be created in '
-                              '--local-basedir when --local-sink is selected'))
-    PARSER.add_argument('--local-basedir', '-lbd', type=str,
-                        help=('Path where to create the local database, if --local-sink is '
-                              'selected'))
-
     ARGS = PARSER.parse_args()
+    
+    PARAMETER_CONFIG = parameters_config()
 
     BASE_DIR = ARGS.input_dir
 
     sub_list, BASE_DIR = create_subject_list(BASE_DIR, subjects_to_process=[])
 
     if ARGS.data_sorting:
-        if not ARGS.no_mrclass:
-            checkpoints, sub_checkpoints = download_mrclass_weights()
-        else:
-            checkpoints = None
-            sub_checkpoints = None
-
+        checkpoints, sub_checkpoints = download_mrclass_weights()
+        check_free_space(BASE_DIR, ARGS.work_dir)
         workflow = DataCuration(
             sub_id='', input_dir=BASE_DIR, work_dir=ARGS.work_dir,
-            process_rt=True, cores=ARGS.num_cores)
+            process_rt=True, cores=ARGS.num_cores, local_sink=False)
         wf = workflow.workflow_setup(
             data_sorting=True, subject_name_position=ARGS.subject_name_position,
-            renaming=ARGS.renaming, mr_classiffication=not ARGS.no_mrclass)
+            renaming=PARAMETER_CONFIG['renaming'],
+            mrrt_max_time_diff=PARAMETER_CONFIG['mrrt-max-time-diff'],
+            rert_max_time=PARAMETER_CONFIG['replanning_rt-max-time-diff'],
+            body_parts=PARAMETER_CONFIG['body_part'])
         workflow.runner(wf)
         BASE_DIR = os.path.join(ARGS.work_dir, 'workflows_output', 'Sorted_Data')
         sub_list, BASE_DIR = create_subject_list(BASE_DIR, subjects_to_process=[])
 
-    if not ARGS.no_data_curation:
+    if PARAMETER_CONFIG['data_curation']:
         for sub_id in sub_list:
             print('Processing subject {}'.format(sub_id))
     
             workflow = DataCuration(
                 sub_id=sub_id, input_dir=BASE_DIR, work_dir=ARGS.work_dir,
-                process_rt=True, local_basedir=ARGS.local_basedir,
-                local_project_id=ARGS.local_project_id, local_sink=ARGS.local_sink,
+                process_rt=True, local_basedir=PARAMETER_CONFIG['local-basedir'],
+                local_project_id=PARAMETER_CONFIG['local-project-id'],
+                local_sink=PARAMETER_CONFIG['local-sink'],
                 cores=ARGS.num_cores)
             wf = workflow.workflow_setup()
             if wf.list_node_names():
                 workflow.runner(wf)
-            if ARGS.extract_rts:
+            if PARAMETER_CONFIG['extract-rts']:
                 wd = os.path.join(ARGS.work_dir, 'workflows_output', 'DataCuration')
                 workflow = RadioTherapy(
                     sub_id=sub_id, input_dir=wd, work_dir=ARGS.work_dir,
-                    process_rt=True, roi_selection=ARGS.select_rts,
-                    local_basedir=ARGS.local_basedir,
-                    local_project_id=ARGS.local_project_id, local_sink=ARGS.local_sink,
+                    process_rt=True, roi_selection=PARAMETER_CONFIG['select-rts'],
+                    local_basedir=PARAMETER_CONFIG['local-basedir'],
+                    local_project_id=PARAMETER_CONFIG['local-project-id'],
+                    local_sink=PARAMETER_CONFIG['local-sink'],
                     cores=ARGS.num_cores)
                 wf = workflow.workflow_setup()
                 if wf.list_node_names():
                     workflow.runner(wf)
 
     print('Done!')
+
 
 if __name__ == "__main__":
     main()

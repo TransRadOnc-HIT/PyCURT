@@ -5,7 +5,7 @@ from pycurt.interfaces.utils import DicomCheck, ConversionCheck, GetRefRTDose,\
 from nipype.interfaces.dcm2nii import Dcm2niix
 from pycurt.interfaces.plastimatch import DoseConverter
 from core.workflows.base import BaseWorkflow
-from pycurt.interfaces.utils import FolderPreparation, FolderSorting
+from pycurt.interfaces.utils import FolderPreparation, SinkSorting
 from pycurt.interfaces.custom import RTDataSorting, ImageClassification
 from nipype.interfaces.utility import Merge
 
@@ -26,13 +26,15 @@ bp_sub_cp = {
                 'hnc': PARENT_DIR + '/checkpoints_new/bp-class/brain_hnc_0.9425.pth',
 }
 
-mr_cp = {'ADC':PARENT_DIR+'/checkpoints_new/mr-abd/checkpoint_ADCvall_anal_11112019_0995_nodataaug.pth',
-                'T1':PARENT_DIR+'/checkpoints_new/mr-abd/checkpoint_T1vall_anal_11112019_08788_nodataaug.pth',
-                'T2':PARENT_DIR+'/checkpoints_new/mr-abd/checkpoint_T2vall_anal_11112019_08789_nodataaug.pth'
+mr_cp = {'ADC':PARENT_DIR+'/checkpoints_new/mr-hnc/ADC_other.pth',
+                'T1':PARENT_DIR+'/checkpoints_new/mr-hnc/T1_other.pth',
+                'T2':PARENT_DIR+'/checkpoints_new/mr-hnc/T2_other.pth',
+                'FLAIR':PARENT_DIR+'/checkpoints_new/mr-hnc/FLAIR_other.pth',
+                'SWI':PARENT_DIR+'/checkpoints_new/mr-hnc/SWI_other.pth'
                    }
 
 mr_sub_cp = {
-                'T1':PARENT_DIR + '/checkpoints_new/mr-abd/checkpoint_T1vT1Km_anal_11112019_0882_nodataaug.pth',
+                'T1':PARENT_DIR + '/checkpoints_new/mr-hnc/T1_T1KM.pth',
 }
 
 class DataCuration(BaseWorkflow):
@@ -60,19 +62,27 @@ class DataCuration(BaseWorkflow):
         return output_specs
 
     def sorting_workflow(self, subject_name_position=-3, renaming=False,
-                         mr_classiffication=True, mrclass_cp=mr_cp,
+                         mrclass_cp=mr_cp,
                          mrclass_sub_cp=mr_sub_cp, bp_class_cp=bp_cp,
-                         bp_class_sub_cp=bp_sub_cp, bp='abd-pel',):
+                         bp_class_sub_cp=bp_sub_cp, bp=['hnc', 'hncKM'],
+                         mrrt_max_time_diff=15, rert_max_time=42):
 
-        if bp not in ['hnc', 'abd-pel'] and mr_classiffication:
+        mrclass_bp = [x for x in bp if x in ['hnc', 'abd-pel', 'hncKM']]
+        if not mrclass_bp:
             mr_classiffication = False
+            folder2merge = 2
+            folder2merge_iterfields = ['in1', 'in2']
+        else:
+            mr_classiffication = True
+            folder2merge = 3
+            folder2merge_iterfields = ['in1', 'in2', 'in3']
 
         nipype_cache = os.path.join(self.nipype_cache, 'data_sorting')
         result_dir = self.result_dir
 
         workflow = nipype.Workflow('sorting_workflow', base_dir=nipype_cache)
-        datasink = nipype.Node(nipype.DataSink(base_directory=result_dir),
-                               "datasink")
+        datasink = nipype.Node(interface=SinkSorting(), name='datasink')
+        datasink.inputs.out_folder = result_dir
 
         file_check = nipype.Node(interface=FileCheck(), name='fc')
         file_check.inputs.input_dir = self.input_dir
@@ -80,8 +90,6 @@ class DataCuration(BaseWorkflow):
         file_check.inputs.renaming = renaming
         prep = nipype.MapNode(interface=FolderPreparation(), name='prep',
                               iterfield=['input_list'])
-        sort = nipype.MapNode(interface=FolderSorting(), name='sort',
-                              iterfield=['input_dir'])
         bp_class = nipype.MapNode(interface=ImageClassification(),
                                   name='bpclass',
                                   iterfield=['images2label'])
@@ -89,10 +97,13 @@ class DataCuration(BaseWorkflow):
         bp_class.inputs.sub_checkpoints = bp_class_sub_cp
         bp_class.inputs.body_part = bp
         bp_class.inputs.network = 'bpclass'
-        mr_rt_merge = nipype.MapNode(interface=Merge(2), name='mr_rt_merge',
-                                    iterfield=['in1', 'in2'])
+        mr_rt_merge = nipype.MapNode(interface=Merge(folder2merge),
+                                     name='mr_rt_merge',
+                                     iterfield=folder2merge_iterfields)
         mr_rt_merge.inputs.ravel_inputs = True
         merging = nipype.Node(interface=FolderMerge(), name='merge')
+        merging.inputs.mrrt_max_time_diff = mrrt_max_time_diff
+        merging.inputs.rert_max_time = rert_max_time
         if mr_classiffication:
             if mrclass_cp is None or mrclass_sub_cp is None:
                 raise Exception('MRClass weights were not provided, MR image '
@@ -101,6 +112,7 @@ class DataCuration(BaseWorkflow):
                                      iterfield=['images2label', 'out_folder'])
             mrclass.inputs.checkpoints = mrclass_cp
             mrclass.inputs.sub_checkpoints = mrclass_sub_cp
+            mrclass.inputs.body_part = mrclass_bp
             mrclass.inputs.network = 'mrclass'
         else:
             mr_rt_merge.inputs.in1 = None
@@ -108,21 +120,15 @@ class DataCuration(BaseWorkflow):
                                     iterfield=['input_dir'])
 
         workflow.connect(file_check, 'out_list', prep, 'input_list')
-        workflow.connect(prep, 'out_folder', sort, 'input_dir')
-        workflow.connect(sort, 'out_folder', rt_sorting, 'input_dir')
-        workflow.connect(sort, 'for_inference', bp_class, 'images2label')
+        workflow.connect(prep, 'out_folder', rt_sorting, 'input_dir')
+        workflow.connect(prep, 'for_inference', bp_class, 'images2label')
+        workflow.connect(bp_class, 'output_dict', mr_rt_merge, 'in1')
+        workflow.connect(rt_sorting, 'output_dict', mr_rt_merge, 'in2')
+        workflow.connect(mr_rt_merge, 'out', merging, 'input_list')
+        workflow.connect(merging, 'out_folder', datasink, 'tosink')
         if mr_classiffication:
             workflow.connect(bp_class, 'labeled_images', mrclass, 'images2label')
-            workflow.connect(bp_class, 'out_folder', mrclass, 'out_folder')
-            workflow.connect(mrclass, 'out_folder', mr_rt_merge, 'in1')
-
-            workflow.connect(rt_sorting, 'out_folder', mr_rt_merge, 'in2')
-            workflow.connect(mr_rt_merge, 'out', merging, 'input_list')
-            workflow.connect(merging, 'out_folder', datasink, '@rt_sorted')
-        else:
-            workflow.connect(rt_sorting, 'out_folder', datasink, '@rt_sorted')
-            substitutions = [('_rt_sorting\d+/', '')]
-            datasink.inputs.regexp_substitutions = substitutions
+            workflow.connect(mrclass, 'output_dict', mr_rt_merge, 'in3')
         
         return workflow
 
@@ -237,14 +243,17 @@ class DataCuration(BaseWorkflow):
         return workflow
 
     def workflow_setup(self, data_sorting=False, subject_name_position=-3,
-                       renaming=False, mr_classiffication=True, mrclass_cp=mr_cp,
-                       mrclass_sub_cp=mr_sub_cp):
+                       renaming=False, mrclass_cp=mr_cp,
+                       mrclass_sub_cp=mr_sub_cp, mrrt_max_time_diff=15, rert_max_time=42,
+                       body_parts=['hnc', 'hncKM']):
 
         if data_sorting:
             workflow = self.sorting_workflow(
                 subject_name_position=subject_name_position,
-                renaming=renaming, mr_classiffication=mr_classiffication,
-                mrclass_cp=mrclass_cp, mrclass_sub_cp=mrclass_sub_cp)
+                renaming=renaming,
+                mrclass_cp=mrclass_cp, mrclass_sub_cp=mrclass_sub_cp,
+                mrrt_max_time_diff=mrrt_max_time_diff, rert_max_time=rert_max_time,
+                bp=body_parts)
 
         else:
             workflow = self.convertion_workflow()

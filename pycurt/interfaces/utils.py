@@ -21,6 +21,7 @@ from . import logging
 import SimpleITK as sitk
 from datetime import datetime as dt
 from datetime import timedelta
+from pycurt.utils.filemanip import create_move_toDir
 
 
 iflogger = logging.getLogger('nipype.interface')
@@ -446,7 +447,7 @@ class FileCheck(BaseInterface):
             for f in files:
                 if '.dcm' in f:
                     filename = os.path.join(path, f)
-                    iflogger.info('Process number: {}\n File: {}'.format(z, filename))
+#                     iflogger.info('Process number: {}\n File: {}'.format(z, filename))
                     try:
                         ds = pydicom.dcmread(filename, force = True)
                     except:
@@ -526,6 +527,8 @@ class FolderPreparationInputSpec(BaseInterfaceInputSpec):
 class FolderPreparationOutputSpec(TraitedSpec):
 
     out_folder = Directory(exists=True, desc='Prepared folder.')
+    for_inference = traits.Dict(help='Dictionary of images to be classified using '
+                                'mrclass or bpclass.')
 
 
 class FolderPreparation(BaseInterface):
@@ -550,51 +553,17 @@ class FolderPreparation(BaseInterface):
                     os.makedirs(dir_name)
                 shutil.copy2(Path(file), dir_name)
 
+        self.for_inference = self.sort(output_dir)
+
         return runtime
 
-    def strip_non_ascii(self, string):
-        ''' Returns the string without non ASCII characters'''
-        stripped = (c for c in string if 0 < ord(c) < 127)
-        return ''.join(stripped)
+    def sort(self, input_dir):
 
-    def _list_outputs(self):
-        outputs = self._outputs().get()
-        if isdefined(self.inputs.out_folder):
-            outputs['out_folder'] = os.path.abspath(
-                self.inputs.out_folder)
-
-        return outputs
-
-
-class FolderSortingInputSpec(BaseInterfaceInputSpec):
-    
-    input_dir = Directory(exists=True, help='Input directory to sort.')
-    out_folder = Directory('sorted_dir', usedefault=True,
-                           desc='Prepared folder.')
-    
-
-
-class FolderSortingOutputSpec(TraitedSpec):
-    
-    out_folder = Directory(help='Sorted folder.')
-    for_inference = traits.Dict(help='Dictionary of images to be classified using '
-                                'mrclass or bpclass.')
-
-
-class FolderSorting(BaseInterface):
-    
-    input_spec = FolderSortingInputSpec
-    output_spec = FolderSortingOutputSpec
-    
-    def _run_interface(self, runtime):
-        
-        input_dir = self.inputs.input_dir
-        out_dir = os.path.abspath(self.inputs.out_folder)
-
+        out_dir = input_dir
         modality_list_rt = ['RTDOSE', 'RTSTRUCT', 'RTPLAN', 'PET', 'CT']
         modality_list_inference = ['MR', 'OT']
         
-        images=glob.glob(input_dir+'/*/*/*')
+        images = glob.glob(input_dir+'/*/*/*')
         for_inference={}
         for_inference['MR'] = []
         for_inference['CT'] = []
@@ -613,7 +582,8 @@ class FolderSorting(BaseInterface):
             if modality_check == 'RTSS':
                 modality_check = 'RTSTRUCT'
             if modality_check in modality_list_rt:
-                new_image, i = label_move_image(i, modality_check, out_dir)
+                new_image, i = label_move_image(i, modality_check, out_dir,
+                                                renaming=False)
                 if modality_check == 'CT':
                     converter = DicomConverter(new_image)
                     nifti_image = converter.convert(rename_dicom=True, force=True)
@@ -641,17 +611,21 @@ class FolderSorting(BaseInterface):
                         label_move_image(i, 'error_converting', out_dir)
                         iflogger.info('Error converting', str(new_image))
             else:
-                label_move_image(i, 'Unknown_modality', out_dir)
-        self.for_inference = for_inference
+                label_move_image(i, 'Unknown_modality', out_dir, renaming=False)
 
-        return runtime
+        return for_inference
+
+    def strip_non_ascii(self, string):
+        ''' Returns the string without non ASCII characters'''
+        stripped = (c for c in string if 0 < ord(c) < 127)
+        return ''.join(stripped)
 
     def _list_outputs(self):
         outputs = self._outputs().get()
         if isdefined(self.inputs.out_folder):
             outputs['out_folder'] = os.path.abspath(
                 self.inputs.out_folder)
-        outputs['for_inference'] = self.for_inference
+            outputs['for_inference'] = self.for_inference
 
         return outputs
 
@@ -659,6 +633,15 @@ class FolderSorting(BaseInterface):
 class FolderMergeInputSpec(BaseInterfaceInputSpec):
     
     input_list = traits.List(help='Input directory to sort.')
+    ct_dict = traits.Dict(help='Dictionary with labelled CTs to sink')
+    rt_dict = traits.Dict(help='Dictionary with labelled RTs to sink')
+    mr_dict = traits.Dict(help='Dictionary with labelled MRIs to sink')
+    rert_max_time = traits.Int(help='Any RT session within this time (in days)'
+                               'from the first RT will be considered as'
+                               'replanning RT.')
+    mrrt_max_time_diff = traits.Int(help='Max time, in days, after the RT session '
+                                    'in which PyCURT is expecting to find an MR '
+                                    'planning session.')
     out_folder = Directory('Sorted_Data', usedefault=True,
                            desc='Prepared folder.')
 
@@ -674,10 +657,11 @@ class FolderMerge(BaseInterface):
     output_spec = FolderMergeOutputSpec
     
     def _run_interface(self, runtime):
-        
-        input_list = self.inputs.input_list
-        out_dir = os.path.abspath(self.inputs.out_folder)
 
+        input_list = self.inputs.input_list
+        rert_max_time = self.inputs.rert_max_time
+        mrrt_max_time_diff = self.inputs.mrrt_max_time_diff
+        out_dir = os.path.abspath(self.inputs.out_folder)
         toreprocess = []
 
         for directories in input_list:
@@ -685,63 +669,225 @@ class FolderMerge(BaseInterface):
             session_dict['RT'] = []
             session_dict['CT'] = []
             session_dict['MR'] = []
-            mr_dir = directories[0]
-            rt_dir = directories[1]
-            if mr_dir is None or not os.path.isdir(mr_dir):
-                iflogger.info('No MRI data found')
-                mr_tocopy = []
-                mr_sub_name = None
+            rt_dict = directories[1]
+            ct_dict = directories[0]
+            if len(directories) == 3:
+                mr_dict = directories[2]
             else:
-                mr_sub_name = os.listdir(mr_dir)[0]
-                mr_tocopy = sorted(glob.glob(os.path.join(mr_dir, mr_sub_name, '*')))
-            if not os.path.isdir(rt_dir):
-                iflogger.info('No RT or CT data found')
-                rt_tocopy = []
-                rt_sub_name = None
-            else:
-                rt_sub_name = os.listdir(rt_dir)[0]
-                rt_tocopy = sorted(glob.glob(os.path.join(rt_dir, rt_sub_name, '*')))
-#             mr_sub_name = os.listdir(mr_dir)[0]
-            if (rt_sub_name is not None and mr_sub_name is not None) and rt_sub_name != mr_sub_name:
-                raise Exception('Subject name is different between MR and RT '
-                                'result folder. Something went wrong.')
-            if mr_sub_name is not None:
-                sub_name = mr_sub_name
-            elif rt_sub_name is not None:
-                sub_name = rt_sub_name
-            else:
-                sub_name = None
-
-            if sub_name is not None:
-                if not os.path.isdir(os.path.join(out_dir, sub_name)):
-                    os.makedirs(os.path.join(out_dir, sub_name))
-                for folder in mr_tocopy+rt_tocopy:
-                    folder_name = folder.split('/')[-1]
-                    shutil.copytree(folder, os.path.join(
-                        out_dir, sub_name, folder_name))
-                    if folder in mr_tocopy:
-                        session_dict['MR'].append([os.path.join(
-                            out_dir, sub_name, folder_name),
-                            dt.strptime(folder_name, '%Y%m%d')])
-                    else:
-                        if '_CT' in folder:
-                            session_dict['CT'].append([os.path.join(
-                            out_dir, sub_name,folder_name),
-                            dt.strptime(folder_name.split('_CT')[0], '%Y%m%d')])
-                        elif '_RT' in folder:
-                            session_dict['RT'].append([os.path.join(
-                            out_dir, sub_name,folder_name),
-                            dt.strptime(folder_name.split('_RT')[0], '%Y%m%d')])
+                mr_dict = None
+            input2sort = [[x, y] for x, y in zip(['CT', 'MR'], [ct_dict, mr_dict])
+                          if y is not None]
+            sub_info = {}
+            for modality, outdict in input2sort:
+                sub_info[modality] = {}
+                sub_info[modality]['sub_name'] = []
+                sub_info[modality]['sessions'] = []
+                for key in outdict[modality].keys():
+                    for cm in outdict[modality][key]:
+                        indices = [i for i, x in enumerate(cm[0]) if x == "/"]
+                        if modality == 'MR':
+                            sub_info[modality]['sub_name'].append(cm[0].split('/')[-3])
+                            sub_info[modality]['sessions'].append(cm[0].split('/')[-2])
+                            dirName = os.path.join(
+                                out_dir, cm[0][indices[-3]+1:indices[-1]], key)
+                        else:
+                            sub_info[modality]['sub_name'].append(cm[0].split('/')[-4])
+                            sub_info[modality]['sessions'].append(cm[0].split('/')[-3])
+                            dirName = os.path.join(
+                                out_dir, cm[0][indices[-4]+1:indices[-1]])
+                        create_move_toDir(cm[0], dirName, cm[1])
+                sub_info[modality]['sub_name'] = list(set(sub_info[modality]['sub_name']))
+                sub_info[modality]['sessions'] = list(set(sub_info[modality]['sessions']))
+                if len(sub_info[modality]['sub_name']) > 1:
+                    raise Exception('Multiple subject names found. Something went wrong.')
+                for folder_name in sub_info[modality]['sessions']:
+                    sub_name = sub_info[modality]['sub_name'][0]
+                    session_dict[modality].append([os.path.join(
+                        out_dir, sub_name, folder_name),
+                        dt.strptime(folder_name, '%Y%m%d')])
+            rt_sub_names = []
+            for rt_tp in rt_dict.keys():
+                sub_name, session = rt_tp.split('_')
+                rt_sub_names.append(sub_name)
+                session_dict['RT'].append([os.path.join(
+                    out_dir, sub_name, session),
+                    dt.strptime(session, '%Y%m%d')])
+                session = session+'_RT'
+                if 'rtplan' in rt_dict[rt_tp].keys():
+                    rtplan_dir = os.path.join(
+                        out_dir, sub_name, session, 'RTPLAN')
+                    os.makedirs(os.path.join(rtplan_dir, '1-RTPLAN_Used'),
+                                exist_ok=True)
+                    shutil.copy2(rt_dict[rt_tp]['rtplan'],
+                                 os.path.join(rtplan_dir, '1-RTPLAN_Used'))
+                    if rt_dict[rt_tp]['other_rtplan']:
+                        other_dir = os.path.join(rtplan_dir, 'Other_RTPLAN')
+                        os.makedirs(other_dir)
+                        [shutil.copytree(x, os.path.join(other_dir, x.split('/')[-1]))
+                         for x in rt_dict[rt_tp]['other_rtplan']]
+                if 'rts' in rt_dict[rt_tp].keys():
+                    rts_dir = os.path.join(
+                        out_dir, sub_name, session, 'RTSTRUCT')
+                    os.makedirs(os.path.join(rts_dir, '1-RTSTRUCT_Used'),
+                                exist_ok=True)
+                    shutil.copy2(rt_dict[rt_tp]['rts'],
+                                 os.path.join(rts_dir, '1-RTSTRUCT_Used'))
+                    if rt_dict[rt_tp]['other_rts']:
+                        other_dir = os.path.join(rts_dir, 'Other_RTSTRUCT')
+                        os.makedirs(other_dir)
+                        [shutil.copytree(x, os.path.join(other_dir, x.split('/')[-1]))
+                         for x in rt_dict[rt_tp]['other_rts']]
+                if 'rtct' in rt_dict[rt_tp].keys():
+                    rtct_dir = os.path.join(
+                        out_dir, sub_name, session, 'RTCT')
+                    os.makedirs(os.path.join(rtct_dir, '1-BPLCT_Used'),
+                                exist_ok=True)
+                    for f in sorted(glob.glob(rt_dict[rt_tp]['rtct']+'/*')):
+                        shutil.copy2(
+                            f, os.path.join(rtct_dir, '1-BPLCT_Used'))
+                    if rt_dict[rt_tp]['other_ct']:
+                        other_dir = os.path.join(rtct_dir, 'Other_CT')
+                        os.makedirs(other_dir)
+                        [shutil.copytree(x, os.path.join(other_dir, x.split('/')[-1]))
+                         for x in rt_dict[rt_tp]['other_ct']]
+                if ('phy_dose' in rt_dict[rt_tp].keys() and
+                        rt_dict[rt_tp]['phy_dose'] is not None):
+                    phy_dose_dir = os.path.join(
+                        out_dir, sub_name, session, 'RTDOSE',
+                        rt_dict[rt_tp]['phy_dose'][0])
+                    os.makedirs(phy_dose_dir, exist_ok=True)
+                    shutil.copy2(rt_dict[rt_tp]['phy_dose'][1], phy_dose_dir)
+                if ('rbe_dose' in rt_dict[rt_tp].keys() and
+                        rt_dict[rt_tp]['rbe_dose'] is not None):
+                    rbe_dose_dir = os.path.join(
+                        out_dir, sub_name, session, 'RTDOSE',
+                        rt_dict[rt_tp]['rbe_dose'][0])
+                    os.makedirs(rbe_dose_dir, exist_ok=True)
+                    shutil.copy2(rt_dict[rt_tp]['rbe_dose'][1], rbe_dose_dir)
+                if ('other_rtdose' in rt_dict[rt_tp].keys() and
+                        rt_dict[rt_tp]['other_rtdose']):
+                    other_dir = os.path.join(
+                        out_dir, sub_name, session, 'RTDOSE', 'Other_RTDOSE')
+                    os.makedirs(other_dir)
+                    [shutil.copytree(x, os.path.join(other_dir, x.split('/')[-1]))
+                     for x in rt_dict[rt_tp]['other_rtdose']]
             if session_dict['RT']:
-                self.session_labelling(session_dict)
+                self.session_labelling(session_dict, rert_max_time, mrrt_max_time_diff)
             else:
                 toreprocess.append([session_dict['CT'], session_dict['MR']])
         if toreprocess:
-            self.ct_labelling(toreprocess, out_dir)
+            self.ct_labelling(toreprocess, out_dir, rert_max_time, mrrt_max_time_diff)
+                        
+                        
+#             if not os.path.isdir(rt_dir):
+#                 iflogger.info('No RT data found')
+#                 rt_tocopy = []
+#                 rt_sub_name = None
+#             else:
+#                 rt_sub_name = os.listdir(rt_dir)[0]
+#                 rt_tocopy = sorted(glob.glob(os.path.join(rt_dir, rt_sub_name, '*')))
+#             if sub_name is not None:
+#                 if not os.path.isdir(os.path.join(out_dir, sub_name)):
+#                     os.makedirs(os.path.join(out_dir, sub_name))
+#                 for folder in rt_tocopy:
+#                     folder_name = folder.split('/')[-1]
+#                     shutil.copytree(folder, os.path.join(
+#                         out_dir, sub_name, folder_name))
+#                     if folder in mr_tocopy:
+#                         session_dict['MR'].append([os.path.join(
+#                             out_dir, sub_name, folder_name),
+#                             dt.strptime(folder_name, '%Y%m%d')])
+#                     elif folder in ct_tocopy:
+#                         session_dict['CT'].append([os.path.join(
+#                         out_dir, sub_name,folder_name),
+#                         dt.strptime(folder_name, '%Y%m%d')])
+#                     else:
+#                         session_dict['RT'].append([os.path.join(
+#                         out_dir, sub_name,folder_name),
+#                         dt.strptime(folder_name.split('_RT')[0], '%Y%m%d')])
+# 
+# 
+#         input_list = self.inputs.input_list
+#         rert_max_time = self.inputs.rert_max_time
+#         mrrt_max_time_diff = self.inputs.mrrt_max_time_diff
+#         out_dir = os.path.abspath(self.inputs.out_folder)
+# 
+#         toreprocess = []
+# 
+#         for directories in input_list:
+#             session_dict = {}
+#             session_dict['RT'] = []
+#             session_dict['CT'] = []
+#             session_dict['MR'] = []
+#             if len(directories) == 3:
+#                 mr_dir = directories[2]
+#                 rt_dir = directories[1]
+#                 ct_dir = directories[0]
+#             else:
+#                 mr_dir = None
+#                 rt_dir = directories[1]
+#                 ct_dir = directories[0]
+#             if mr_dir is None or not os.path.isdir(mr_dir):
+#                 iflogger.info('No MRI data found')
+#                 mr_tocopy = []
+#                 mr_sub_name = None
+#             else:
+#                 mr_sub_name = os.listdir(mr_dir)[0]
+#                 mr_tocopy = sorted(glob.glob(os.path.join(mr_dir, mr_sub_name, '*')))
+#             if not os.path.isdir(rt_dir):
+#                 iflogger.info('No RT data found')
+#                 rt_tocopy = []
+#                 rt_sub_name = None
+#             else:
+#                 rt_sub_name = os.listdir(rt_dir)[0]
+#                 rt_tocopy = sorted(glob.glob(os.path.join(rt_dir, rt_sub_name, '*')))
+#             if not os.path.isdir(ct_dir):
+#                 iflogger.info('No CT data found')
+#                 ct_tocopy = []
+#                 ct_sub_name = None
+#             else:
+#                 ct_sub_name = os.listdir(ct_dir)[0]
+#                 ct_tocopy = sorted(glob.glob(os.path.join(ct_dir, ct_sub_name, '*')))
+# #             mr_sub_name = os.listdir(mr_dir)[0]
+#             if (rt_sub_name is not None and mr_sub_name is not None) and rt_sub_name != mr_sub_name:
+#                 raise Exception('Subject name is different between MR and RT '
+#                                 'result folder. Something went wrong.')
+#             if mr_sub_name is not None:
+#                 sub_name = mr_sub_name
+#             elif rt_sub_name is not None:
+#                 sub_name = rt_sub_name
+#             else:
+#                 sub_name = None
+# 
+#             if sub_name is not None:
+#                 if not os.path.isdir(os.path.join(out_dir, sub_name)):
+#                     os.makedirs(os.path.join(out_dir, sub_name))
+#                 for folder in mr_tocopy+rt_tocopy+ct_tocopy:
+#                     folder_name = folder.split('/')[-1]
+#                     shutil.copytree(folder, os.path.join(
+#                         out_dir, sub_name, folder_name))
+#                     if folder in mr_tocopy:
+#                         session_dict['MR'].append([os.path.join(
+#                             out_dir, sub_name, folder_name),
+#                             dt.strptime(folder_name, '%Y%m%d')])
+#                     elif folder in ct_tocopy:
+#                         session_dict['CT'].append([os.path.join(
+#                         out_dir, sub_name,folder_name),
+#                         dt.strptime(folder_name, '%Y%m%d')])
+#                     else:
+#                         session_dict['RT'].append([os.path.join(
+#                         out_dir, sub_name,folder_name),
+#                         dt.strptime(folder_name.split('_RT')[0], '%Y%m%d')])
+#             if session_dict['RT']:
+#                 self.session_labelling(session_dict, rert_max_time, mrrt_max_time_diff)
+#             else:
+#                 toreprocess.append([session_dict['CT'], session_dict['MR']])
+#         if toreprocess:
+#             self.ct_labelling(toreprocess, out_dir, rert_max_time, mrrt_max_time_diff)
 
         return runtime
 
-    def ct_labelling(self, toreprocess, out_dir):
+    def ct_labelling(self, toreprocess, out_dir, rert_max_time, mrrt_max_time_diff):
 
         rtct_sds = []
         for path, _, files in os.walk(out_dir):
@@ -781,12 +927,12 @@ class FolderMerge(BaseInterface):
             session_dict['CT'] = ct_sessions
             session_dict['MR'] = mr_sessions
             if label:
-                self.session_labelling(session_dict)
+                self.session_labelling(session_dict, rert_max_time, mrrt_max_time_diff)
             else:
                 iflogger.info('Could not identify any planning CT in the _CT folders '
                               'based on CT series descriptions.')
         
-    def session_labelling(self, session_dict):
+    def session_labelling(self, session_dict, rert_max_time, mrrt_max_time_diff):
         
         rt_sessions = sorted(session_dict['RT'])
         ct_sessions = sorted(session_dict['CT'])
@@ -799,7 +945,7 @@ class FolderMerge(BaseInterface):
             for i, rt_session in enumerate(rt_sessions[1:]):
                 self.get_rtct_description(rt_session[0]+'/RTCT/1-*')
                 diff = (rt_session[1]-rt_ref[1]).days
-                if diff <= 42:
+                if diff <= rert_max_time:
                     toremove.append(rt_session)
                     ct_sessions.append(rt_session)
                 else:
@@ -846,7 +992,8 @@ class FolderMerge(BaseInterface):
                         mrtp = mr
                         diff = (rt_date - mr_date).days
                         found = True
-                    elif mr_date > rt_date and (mr_date-rt_date).days <= 15 and not found:
+                    elif (mr_date > rt_date and (mr_date-rt_date).days <= mrrt_max_time_diff
+                            and not found):
                         mrtp = mr
                 if mrtp is not None:
                     shutil.move(mrtp[0], mrtp[0]+'_MR-RT')
@@ -857,10 +1004,10 @@ class FolderMerge(BaseInterface):
                     if mr_date < rt_date:
                         shutil.move(mr_path, mr_path+'_pre-RT')
                         sessions[basename].append(mr_path+'_pre-RT')
-                    elif mr_date > rt_date and mr_date <= rt_date+timedelta(days=42):
+                    elif mr_date > rt_date and mr_date <= rt_date+timedelta(days=rert_max_time):
                         shutil.move(mr_path, mr_path+'_post-RT')
                         sessions[basename].append(mr_path+'_post-RT')
-                    elif mr_date > rt_date+timedelta(days=42):
+                    elif mr_date > rt_date+timedelta(days=rert_max_time):
                         shutil.move(mr_path, mr_path+'_FU')
                         sessions[basename].append(mr_path+'_FU')
             if cts:
@@ -876,7 +1023,7 @@ class FolderMerge(BaseInterface):
                             for f in ff:
                                 fname = f.split('/')[-1]
                                 shutil.move(f, ct_outpath+'_pre-RT'+'/{}'.format(fname))
-                    elif ct_date > rt_date and ct_date <= rt_date+timedelta(days=42):
+                    elif ct_date > rt_date and ct_date <= rt_date+timedelta(days=rert_max_time):
                         sessions[basename].append(ct_outpath+'_post-RT')
                         try:
                             shutil.move(ct_path, ct_outpath+'_post-RT')
@@ -885,7 +1032,7 @@ class FolderMerge(BaseInterface):
                             for f in ff:
                                 fname = f.split('/')[-1]
                                 shutil.move(f, ct_outpath+'_post-RT'+'/{}'.format(fname))
-                    elif ct_date > rt_date+timedelta(days=42):
+                    elif ct_date > rt_date+timedelta(days=rert_max_time):
                         sessions[basename].append(ct_outpath+'_FU')
                         try:
                             shutil.move(ct_path, ct_outpath+'_FU')    
@@ -894,6 +1041,15 @@ class FolderMerge(BaseInterface):
                             for f in ff:
                                 fname = f.split('/')[-1]
                                 shutil.move(f, ct_outpath+'_FU'+'/{}'.format(fname))
+                    elif ct_date == rt_date:
+                        if os.path.isdir(rt_path+'/RTCT'):
+                            shutil.rmtree(ct_path)
+                        else:
+                            ff = sorted(glob.glob(ct_path+'/*'))
+                            for f in ff:
+                                fname = f.split('/')[-1]
+                                shutil.move(f, rt_path+'/{}'.format(fname))
+                            shutil.rmtree(ct_path)
             sessions[basename] = list(set(sessions[basename]))
         if len(sessions) > 1:
             for key in sessions:
@@ -967,5 +1123,42 @@ class MHA2NIIConverter(BaseInterface):
             outputs['out_folder'] = os.path.abspath(
                 self.inputs.out_folder)
         outputs['out_files'] = self.converted_files
+
+        return outputs
+
+
+class SinkSortingInputSpec(BaseInterfaceInputSpec):
+    
+    tosink = Directory(help='Input directory to convert.')
+    out_folder = Directory('Nifti_Data', usedefault=True,
+                           desc='Folder with converted data.')
+
+
+class SinkSortingOutputSpec(TraitedSpec):
+    
+    out_folder = Directory(help='Folder with converted data.')
+
+
+class SinkSorting(BaseInterface):
+    
+    input_spec = SinkSortingInputSpec
+    output_spec = SinkSortingOutputSpec
+    
+    def _run_interface(self, runtime):
+
+        tosink = self.inputs.tosink
+        out_folder = self.inputs.out_folder
+        
+        if not os.path.isdir(out_folder):
+            os.makedirs(out_folder)
+        if os.path.isdir(tosink):
+            shutil.move(tosink, out_folder)
+
+        return runtime
+    
+    def _list_outputs(self):
+        outputs = self._outputs().get()
+        if isdefined(self.inputs.out_folder):
+            outputs['out_folder'] = self.inputs.out_folder
 
         return outputs
