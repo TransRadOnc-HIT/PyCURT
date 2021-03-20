@@ -26,8 +26,10 @@ class ZscoreNormalization(object):
     def __call__(self,sample):
         
         if sample is not None:
-            image, label,spacing,fn = sample['image'], sample['label'], sample['spacing'], sample['fn']
-            image -= image.mean() 
+            image, label, spacing, fn = sample['image'], sample['label'], sample['spacing'], sample['fn']
+            image -= image.mean()
+            if image.std() == 0:
+                print(fn)
             image /= image.std() 
                 
             return {'image': image, 'label': label, 'spacing':spacing, 'fn':fn}

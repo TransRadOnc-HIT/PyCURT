@@ -108,6 +108,8 @@ class RTDataSorting(BaseInterface):
                 else:
                     self.output_dict[key_name]['rbe_dose'] = None
                 self.output_dict[key_name]['other_rtdose'] = ot_d
+        d = dict([(k, v) for k, v in self.output_dict.items() if v])
+        self.output_dict = d
 
         return runtime
 
@@ -118,7 +120,7 @@ class RTDataSorting(BaseInterface):
         if not os.path.isdir(dir_name):
             print('RT plan was not found. With no plan, the doseCubes, '
                   'struct, and planning CT instances cannot be extracted')
-            return None, None, None
+            return None, None, None, None
             
         plan_date, plan_time = 0, 0
         dose_cubes_instance = []
@@ -167,7 +169,7 @@ class RTDataSorting(BaseInterface):
                         plan_time = plan_curr_plan_time
                         plan_name = f
         if plan_name is None:
-            return None,None,None
+            return None, None, None, None
 
         ds = pydicom.dcmread(plan_name, force=True)
         try:
@@ -202,7 +204,7 @@ class RTDataSorting(BaseInterface):
         ct_class_instance = None
         if not os.path.exists(dir_name) and not os.path.isdir(dir_name):
             print('RTStruct was not found..')
-            return None
+            return None, None, None
         dcm_files=glob.glob(dir_name+'/*/*.dcm')
         for f in dcm_files:
             ds = pydicom.dcmread(f,force=True)
@@ -231,7 +233,7 @@ class RTDataSorting(BaseInterface):
 
         if not os.path.exists(dir_name) and not os.path.isdir(dir_name):
             print('BPLCT was not found..')
-            return None
+            return None, None
 
         dcm_folders = glob.glob(dir_name+'/*')
         dcm_folders = [x for x in dcm_folders if os.path.isdir(x)]
@@ -266,7 +268,7 @@ class RTDataSorting(BaseInterface):
         dose_rbe_found = False
         if not os.path.isdir(dir_name):
             print('RTDOSE was not found..')
-            return None
+            return None, None, None, None, None
 
         dcm_files = glob.glob(dir_name+'/*/*.dcm')
         other_dose = []

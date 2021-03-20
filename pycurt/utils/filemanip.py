@@ -79,7 +79,10 @@ def label_move_image(image, modality, out_dir, renaming=True):
         else:
             new_name1 = new_name+'_'+ str(int(len(files)))
         # Renaming old directory
-        shutil.move(new_name, new_name1)
+        try:
+            shutil.move(new_name, new_name1)
+        except:
+            print()
         # Copy to the sorting location  
 #         shutil.copytree(new_name1, os.path.join(dir_name, new_name1.split('/')[-1]))
         outname = os.path.join(dir_name, new_name1.split('/')[-1])

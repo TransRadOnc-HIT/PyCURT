@@ -72,16 +72,17 @@ def main():
                 workflow.runner(wf)
             if PARAMETER_CONFIG['extract-rts']:
                 wd = os.path.join(ARGS.work_dir, 'workflows_output', 'DataCuration')
-                workflow = RadioTherapy(
-                    sub_id=sub_id, input_dir=wd, work_dir=ARGS.work_dir,
-                    process_rt=True, roi_selection=PARAMETER_CONFIG['select-rts'],
-                    local_basedir=PARAMETER_CONFIG['local-basedir'],
-                    local_project_id=PARAMETER_CONFIG['local-project-id'],
-                    local_sink=PARAMETER_CONFIG['local-sink'],
-                    cores=ARGS.num_cores)
-                wf = workflow.workflow_setup()
-                if wf.list_node_names():
-                    workflow.runner(wf)
+                if os.path.isdir(wd):
+                    workflow = RadioTherapy(
+                        sub_id=sub_id, input_dir=wd, work_dir=ARGS.work_dir,
+                        process_rt=True, roi_selection=PARAMETER_CONFIG['select-rts'],
+                        local_basedir=PARAMETER_CONFIG['local-basedir'],
+                        local_project_id=PARAMETER_CONFIG['local-project-id'],
+                        local_sink=PARAMETER_CONFIG['local-sink'],
+                        cores=ARGS.num_cores)
+                    wf = workflow.workflow_setup()
+                    if wf.list_node_names():
+                        workflow.runner(wf)
 
     print('Done!')
 

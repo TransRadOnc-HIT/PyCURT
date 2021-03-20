@@ -8,6 +8,9 @@ import time
 
 def check_free_space(in_path, out_path):
 
+    print('Start checking the size of the input folder to see if there is enough '
+          'free space to run PyCURT data sorting. This might take a while, '
+          'depending on the input data size')
     in_size = int(subprocess.check_output(['du','-sk', in_path])
                   .split()[0].decode('utf-8'))
     in_size = in_size*0.000977
@@ -24,7 +27,8 @@ def check_free_space(in_path, out_path):
               '{1} Mb of free space, while the specified working directory seems to have '
               'only {2} Mb of available space. This is a rough estimation and at the end '
               'the space might be enough, but be warned that '
-              'the process might fail.'.format(in_size, in_size*2, out_size))
+              'the process might fail. Consider changing the working directory or '
+              ' free some additional space'.format(in_size, in_size*2, out_size))
         print('The sorting will start in 20 seconds...')
         time.sleep(20)
 
@@ -87,7 +91,7 @@ def parameters_config():
     for hnc, hncKM and abd-pel. For the other parts, you will only
     get CT and RT data sorted.
     """
-    parameters['body_part'] = ['hnc', 'hncKM']
+    parameters['body_part'] = ['abd-pel']
 
     """
     If you do not want to run the data convertion after sorting,

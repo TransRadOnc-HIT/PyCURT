@@ -67,8 +67,9 @@ class DataCuration(BaseWorkflow):
                          bp_class_sub_cp=bp_sub_cp, bp=['hnc', 'hncKM'],
                          mrrt_max_time_diff=15, rert_max_time=42):
 
-        mrclass_bp = [x for x in bp if x in ['hnc', 'abd-pel', 'hncKM']]
+        mrclass_bp = [x for x in bp if x in ['hnc', 'hncKM']]
         if not mrclass_bp:
+            print('MRClass will not run')
             mr_classiffication = False
             folder2merge = 2
             folder2merge_iterfields = ['in1', 'in2']

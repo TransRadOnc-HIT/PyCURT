@@ -589,9 +589,10 @@ class FolderPreparation(BaseInterface):
                     nifti_image = converter.convert(rename_dicom=True, force=True)
                     if nifti_image is not None:
                         for_inference['CT'].append(nifti_image)
-                    else:
-                        label_move_image(i, 'error_converting', out_dir)
-                        iflogger.info('Error converting', str(new_image))
+#                     else:
+#                         label_move_image(i, 'error_converting', out_dir,
+#                                          renaming=False)
+#                         iflogger.info('Error converting', str(new_image))
             elif modality_check in modality_list_inference:
                 #checking for duplicates or localizer
                 new_image, i = label_move_image(i, '', out_dir,
@@ -607,9 +608,10 @@ class FolderPreparation(BaseInterface):
                     nifti_image = converter.convert(rename_dicom=True)
                     if nifti_image is not None:
                         for_inference['MR'].append(nifti_image)
-                    else:
-                        label_move_image(i, 'error_converting', out_dir)
-                        iflogger.info('Error converting', str(new_image))
+#                     else:
+#                         label_move_image(i, 'error_converting', out_dir,
+#                                          renaming=False)
+#                         iflogger.info('Error converting', str(new_image))
             else:
                 label_move_image(i, 'Unknown_modality', out_dir, renaming=False)
 
