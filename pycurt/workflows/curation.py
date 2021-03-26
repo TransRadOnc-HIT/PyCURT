@@ -67,7 +67,7 @@ class DataCuration(BaseWorkflow):
                          bp_class_sub_cp=bp_sub_cp, bp=['hnc', 'hncKM'],
                          mrrt_max_time_diff=15, rert_max_time=42):
 
-        mrclass_bp = [x for x in bp if x in ['hnc', 'hncKM']]
+        mrclass_bp = [x for x in bp if x in ['hnc', 'abd-pel', 'hncKM']]
         if not mrclass_bp:
             print('MRClass will not run')
             mr_classiffication = False
@@ -110,13 +110,13 @@ class DataCuration(BaseWorkflow):
                 raise Exception('MRClass weights were not provided, MR image '
                                 'classification cannot be performed!')
             mrclass = nipype.MapNode(interface=ImageClassification(), name='mrclass',
-                                     iterfield=['images2label', 'out_folder'])
+                                     iterfield=['images2label'])
             mrclass.inputs.checkpoints = mrclass_cp
             mrclass.inputs.sub_checkpoints = mrclass_sub_cp
             mrclass.inputs.body_part = mrclass_bp
             mrclass.inputs.network = 'mrclass'
         else:
-            mr_rt_merge.inputs.in1 = None
+            mr_rt_merge.inputs.in3 = None
         rt_sorting = nipype.MapNode(interface=RTDataSorting(), name='rt_sorting',
                                     iterfield=['input_dir'])
 

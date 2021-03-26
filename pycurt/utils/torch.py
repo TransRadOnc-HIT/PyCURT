@@ -28,9 +28,8 @@ class ZscoreNormalization(object):
         if sample is not None:
             image, label, spacing, fn = sample['image'], sample['label'], sample['spacing'], sample['fn']
             image -= image.mean()
-            if image.std() == 0:
-                print(fn)
-            image /= image.std() 
+            if image.std() != 0:
+                image /= image.std() 
                 
             return {'image': image, 'label': label, 'spacing':spacing, 'fn':fn}
         else:
@@ -118,8 +117,8 @@ class MRClassifierDataset(Dataset):
 
     def __init__(self,list_images='', transform=None, augmentations=None, 
                  class_names = '', run_3d = False, scan = 0, 
-                 remove_corrupt = True, subclasses = False,
-                 parentclass = False, inference = False, spatial_size=224, 
+                 remove_corrupt = False, subclasses = False,
+                 parentclass = False, spatial_size=224, 
                  nr_slices = 50):
  
         self.transform = transform
@@ -173,7 +172,7 @@ class MRClassifierDataset(Dataset):
             try:
                 image = extract_middleSlice(image, self.scan)                 
             except:
-                print ('error loading {0}'.format(img_name))
+                print ('error extracting middle slice {0}'.format(img_name))
                 if self.remove_corrupt and os.path.isfile(img_name):
                     os.remove(img_name)
                 image, class_cat = self.get_random()

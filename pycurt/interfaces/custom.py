@@ -409,6 +409,7 @@ class ImageClassification(BaseInterface):
         self.labelled_images = {}
         self.output_dict = {}
         for modality in images2label.keys():
+            self.output_dict[modality] = {}
             for_inference = images2label[modality]
 #             #iteration through the different models
             labeled = defaultdict(list)
@@ -430,7 +431,7 @@ class ImageClassification(BaseInterface):
                     index = output.data.cpu().numpy().argmax()
                     if index == 0:
                         labeled[img_name[0]].append([cl, actRange])
-                      
+                       
             # check double classification and compare the activation value of class 0
             for key in labeled.keys():
                 r = 0
@@ -440,20 +441,20 @@ class ImageClassification(BaseInterface):
                         r = labeled[key][i][1]
                         j = i
                 labeled[key] = labeled[key].pop(j)
-                  
+                   
             # check for the unlabeled images
             not_labeled = list(set(for_inference) - set(list(labeled.keys())))
             for img in not_labeled:
                 labeled[img] = ['other', 0]
-                  
+                   
             # prepare for subclassification   
             labeled_images[modality] = defaultdict(list)
             for key in labeled.keys():
                 labeled_images[modality][labeled[key][0]].append(key)
-                          
+                           
             # subclassification        
             labeled_sub = defaultdict(list)
-                  
+                   
             for cl in sub_checkpoints.keys():
                 model, class_names, scan = load_checkpoint(sub_checkpoints[cl])
                 test_dataset = MRClassifierDataset(list_images = labeled_images[modality][cl], 
@@ -475,7 +476,7 @@ class ImageClassification(BaseInterface):
                     else:
                         c = ''
                     labeled_sub[img_name[0]] = [cl+c, actRange]
-                           
+                            
             for key in labeled_sub.keys():
                 labeled[key] = labeled_sub[key]
                      
@@ -517,9 +518,10 @@ class ImageClassification(BaseInterface):
             if ((cl_network == 'bpclass' and modality == 'CT') or 
                     (modality == 'MR' and cl_network == 'mrclass')):
                 for key in self.labelled_images[modality].keys():
-                    self.output_dict[modality] = {}
                     if key != 'other':
                         self.output_dict[modality][key] = self.labelled_images[modality][key]
+            else:
+                self.output_dict[modality] = None
 #                         for cm in self.labelled_images[modality][key]:
 #                             indices = [i for i, x in enumerate(cm[0]) if x == "/"]
 #                             if modality == 'MR':
@@ -538,7 +540,7 @@ class ImageClassification(BaseInterface):
             outputs['out_folder'] = os.path.abspath(
                 self.inputs.out_folder)
             outputs['labeled_images'] = self.labelled_images
-            outputs['output_dict'] =self.output_dict
+            outputs['output_dict'] = self.output_dict
 
         return outputs
 

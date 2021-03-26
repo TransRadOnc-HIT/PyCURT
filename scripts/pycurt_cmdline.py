@@ -43,7 +43,8 @@ def main():
 
     if ARGS.data_sorting:
         checkpoints, sub_checkpoints = download_mrclass_weights()
-        check_free_space(BASE_DIR, ARGS.work_dir)
+        if not os.path.isdir(os.path.join(ARGS.work_dir, 'nipype_cache')):
+            check_free_space(BASE_DIR, ARGS.work_dir)
         workflow = DataCuration(
             sub_id='', input_dir=BASE_DIR, work_dir=ARGS.work_dir,
             process_rt=True, cores=ARGS.num_cores, local_sink=False)
