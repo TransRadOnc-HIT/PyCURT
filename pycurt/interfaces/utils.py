@@ -527,7 +527,9 @@ class FolderPreparationInputSpec(BaseInterfaceInputSpec):
 class FolderPreparationOutputSpec(TraitedSpec):
 
     out_folder = Directory(exists=True, desc='Prepared folder.')
-    for_inference = traits.Dict(help='Dictionary of images to be classified using '
+    for_inference_ct = traits.Dict(help='Dictionary of images to be classified using '
+                                'mrclass or bpclass.')
+    for_inference_mr = traits.Dict(help='Dictionary of images to be classified using '
                                 'mrclass or bpclass.')
 
 
@@ -553,7 +555,7 @@ class FolderPreparation(BaseInterface):
                     os.makedirs(dir_name)
                 shutil.copy2(Path(file), dir_name)
 
-        self.for_inference = self.sort(output_dir)
+        self.for_inference_ct, self.for_inference_mr = self.sort(output_dir)
 
         return runtime
 
@@ -564,9 +566,10 @@ class FolderPreparation(BaseInterface):
         modality_list_inference = ['MR', 'OT']
         
         images = glob.glob(input_dir+'/*/*/*')
-        for_inference={}
-        for_inference['MR'] = []
-        for_inference['CT'] = []
+        for_inference_mr = {}
+        for_inference_ct = {}
+        for_inference_mr['MR'] = []
+        for_inference_ct['CT'] = []
 
         for i in images:
             if os.path.isdir(i):
@@ -588,7 +591,7 @@ class FolderPreparation(BaseInterface):
                     converter = DicomConverter(new_image)
                     nifti_image = converter.convert(rename_dicom=True, force=True)
                     if nifti_image is not None:
-                        for_inference['CT'].append(nifti_image)
+                        for_inference_ct['CT'].append(nifti_image)
 #                     else:
 #                         label_move_image(i, 'error_converting', out_dir,
 #                                          renaming=False)
@@ -607,7 +610,7 @@ class FolderPreparation(BaseInterface):
                     converter = DicomConverter(new_image)
                     nifti_image = converter.convert(rename_dicom=True)
                     if nifti_image is not None:
-                        for_inference['MR'].append(nifti_image)
+                        for_inference_mr['MR'].append(nifti_image)
 #                     else:
 #                         label_move_image(i, 'error_converting', out_dir,
 #                                          renaming=False)
@@ -615,7 +618,7 @@ class FolderPreparation(BaseInterface):
             else:
                 label_move_image(i, 'Unknown_modality', out_dir, renaming=False)
 
-        return for_inference
+        return for_inference_ct, for_inference_mr
 
     def strip_non_ascii(self, string):
         ''' Returns the string without non ASCII characters'''
@@ -627,7 +630,8 @@ class FolderPreparation(BaseInterface):
         if isdefined(self.inputs.out_folder):
             outputs['out_folder'] = os.path.abspath(
                 self.inputs.out_folder)
-            outputs['for_inference'] = self.for_inference
+            outputs['for_inference_ct'] = self.for_inference_ct
+            outputs['for_inference_mr'] = self.for_inference_mr
 
         return outputs
 
@@ -678,7 +682,7 @@ class FolderMerge(BaseInterface):
             else:
                 mr_dict = None
             input2sort = [[x, y] for x, y in zip(['CT', 'MR'], [ct_dict, mr_dict])
-                          if y is not None]
+                          if (y is not None and y)]
             sub_info = {}
             for modality, outdict in input2sort:
                 sub_info[modality] = {}
@@ -712,7 +716,7 @@ class FolderMerge(BaseInterface):
                 sub_name, session = rt_tp.split('_')
                 rt_sub_names.append(sub_name)
                 session_dict['RT'].append([os.path.join(
-                    out_dir, sub_name, session),
+                    out_dir, sub_name, session+'_RT'),
                     dt.strptime(session, '%Y%m%d')])
                 session = session+'_RT'
                 if 'rtplan' in rt_dict[rt_tp].keys():
@@ -943,7 +947,7 @@ class FolderMerge(BaseInterface):
         toremove = []
         if len(rt_sessions) > 1:
             rt_ref = rt_sessions[0]
-            self.get_rtct_description(rt_ref[0])
+            self.get_rtct_description(rt_ref[0]+'/RTCT/1-*')
             for i, rt_session in enumerate(rt_sessions[1:]):
                 self.get_rtct_description(rt_session[0]+'/RTCT/1-*')
                 diff = (rt_session[1]-rt_ref[1]).days

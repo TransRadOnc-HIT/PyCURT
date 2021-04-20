@@ -15,27 +15,33 @@ POSSIBLE_SEQUENCES = ['t1', 'ct1', 't1km', 't2', 'flair', 'adc', 'swi', 'rtct',
 
 PARENT_DIR =  '/media/fsforazz/Samsung_T5/mr_class/'
 
-bp_cp = {'abd-pel':PARENT_DIR+'/checkpoints_new/bp-class/abd-pel_other_09402.pth',
-                'lung':PARENT_DIR+'/checkpoints_new/bp-class/lung_other_09957.pth',
-                'hnc':PARENT_DIR+'/checkpoints_new/bp-class/hnc_other_09974.pth',
-                'wb':PARENT_DIR+'/checkpoints_new/bp-class/wb_other_09775.pth'
-                   }
+bp_ct_cp = {'abd-pel':PARENT_DIR+'/checkpoints_new/bpclass_ct/abd-pel_other_09402.pth',
+                'lung':PARENT_DIR+'/checkpoints_new/bpclass_ct/lung_other_09957.pth',
+                'hnc':PARENT_DIR+'/checkpoints_new/bpclass_ct/hnc_other_09974.pth',
+                'wb':PARENT_DIR+'/checkpoints_new/bpclass_ct/wb_other_09775.pth'}
 
-bp_sub_cp = {
-                'wb':PARENT_DIR + '/checkpoints_new/bp-class/wb_wbh0_09213.pth',
-                'hnc': PARENT_DIR + '/checkpoints_new/bp-class/brain_hnc_0.9425.pth',
-}
+bp_ct_sub_cp = {'wb':PARENT_DIR + '/checkpoints_new/bpclass_ct/wb_wbhead_09213.pth',
+                'hnc': PARENT_DIR + '/checkpoints_new/bpclass_ct/brain_hnc_0.9425.pth'}
 
-mr_cp = {'ADC':PARENT_DIR+'/checkpoints_new/mr-hnc/ADC_other.pth',
-                'T1':PARENT_DIR+'/checkpoints_new/mr-hnc/T1_other.pth',
-                'T2':PARENT_DIR+'/checkpoints_new/mr-hnc/T2_other.pth',
-                'FLAIR':PARENT_DIR+'/checkpoints_new/mr-hnc/FLAIR_other.pth',
-                'SWI':PARENT_DIR+'/checkpoints_new/mr-hnc/SWI_other.pth'
-                   }
+bp_mr_cp = {'abd-pel':PARENT_DIR+'/checkpoints_new/bpclass_mr/abd-pel_other_0.998.pth',
+            'hnc':PARENT_DIR+'/checkpoints_new/bpclass_mr/hnc_other_0.994.pth'}
 
-mr_sub_cp = {
-                'T1':PARENT_DIR + '/checkpoints_new/mr-hnc/T1_T1KM.pth',
-}
+bp_mr_sub_cp = {'hnc': PARENT_DIR + '/checkpoints_new/bpclass_mr/brain_hnc_0.9624.pth'}
+
+# mr_cp = {'ADC':PARENT_DIR+'/checkpoints_new/mrclass_hnc/ADC_other_0.9986.pth',
+#          'T1':PARENT_DIR+'/checkpoints_new/mrclass_hnc/T1_other_0.9881.pth',
+#          'T2':PARENT_DIR+'/checkpoints_new/mrclass_hnc/T2_other_0.9972.pth',
+#          'FLAIR':PARENT_DIR+'/checkpoints_new/mrclass_hnc/FLAIR_other_0.9948.pth',
+#          'SWI':PARENT_DIR+'/checkpoints_new/mrclass_hnc/SWI_other_0.9984.pth'}
+# 
+# mr_sub_cp = {'T1':PARENT_DIR + '/checkpoints_new/mrclass_hnc/T1_T1KM_0.9892.pth'}
+
+mr_cp = {'ADC':PARENT_DIR+'/checkpoints_new/mrclass_abd-pel/ADC_other_0.9953.pth',
+         'T1':PARENT_DIR+'/checkpoints_new/mrclass_abd-pel/T1_other_0.9052.pth',
+         'T2':PARENT_DIR+'/checkpoints_new/mrclass_abd-pel/T2_other_0.8756.pth'}
+
+mr_sub_cp = {'T1':PARENT_DIR + '/checkpoints_new/mrclass_abd-pel/T1_T1KM_0.8966.pth'}
+
 
 class DataCuration(BaseWorkflow):
     
@@ -63,8 +69,9 @@ class DataCuration(BaseWorkflow):
 
     def sorting_workflow(self, subject_name_position=-3, renaming=False,
                          mrclass_cp=mr_cp,
-                         mrclass_sub_cp=mr_sub_cp, bp_class_cp=bp_cp,
-                         bp_class_sub_cp=bp_sub_cp, bp=['hnc', 'hncKM'],
+                         mrclass_sub_cp=mr_sub_cp, bp_class_ct_cp=bp_ct_cp,
+                         bp_class_ct_sub_cp=bp_ct_sub_cp, bp=['hnc', 'hncKM'],
+                         bp_class_mr_cp=bp_mr_cp, bp_class_mr_sub_cp=bp_mr_sub_cp,
                          mrrt_max_time_diff=15, rert_max_time=42):
 
         mrclass_bp = [x for x in bp if x in ['hnc', 'abd-pel', 'hncKM']]
@@ -91,13 +98,14 @@ class DataCuration(BaseWorkflow):
         file_check.inputs.renaming = renaming
         prep = nipype.MapNode(interface=FolderPreparation(), name='prep',
                               iterfield=['input_list'])
-        bp_class = nipype.MapNode(interface=ImageClassification(),
-                                  name='bpclass',
+        bp_class_ct = nipype.MapNode(interface=ImageClassification(),
+                                  name='bpclass_ct',
                                   iterfield=['images2label'])
-        bp_class.inputs.checkpoints = bp_class_cp
-        bp_class.inputs.sub_checkpoints = bp_class_sub_cp
-        bp_class.inputs.body_part = bp
-        bp_class.inputs.network = 'bpclass'
+        bp_class_ct.inputs.checkpoints = bp_class_ct_cp
+        bp_class_ct.inputs.sub_checkpoints = bp_class_ct_sub_cp
+        bp_class_ct.inputs.body_part = bp
+        bp_class_ct.inputs.network = 'bpclass'
+        bp_class_ct.inputs.modality = 'CT'
         mr_rt_merge = nipype.MapNode(interface=Merge(folder2merge),
                                      name='mr_rt_merge',
                                      iterfield=folder2merge_iterfields)
@@ -109,12 +117,21 @@ class DataCuration(BaseWorkflow):
             if mrclass_cp is None or mrclass_sub_cp is None:
                 raise Exception('MRClass weights were not provided, MR image '
                                 'classification cannot be performed!')
+            bp_class_mr = nipype.MapNode(interface=ImageClassification(),
+                                      name='bpclass_mr',
+                                      iterfield=['images2label'])
+            bp_class_mr.inputs.checkpoints = bp_class_mr_cp
+            bp_class_mr.inputs.sub_checkpoints = bp_class_mr_sub_cp
+            bp_class_mr.inputs.body_part = mrclass_bp
+            bp_class_mr.inputs.network = 'bpclass'
+            bp_class_mr.inputs.modality = 'MR'
             mrclass = nipype.MapNode(interface=ImageClassification(), name='mrclass',
                                      iterfield=['images2label'])
             mrclass.inputs.checkpoints = mrclass_cp
             mrclass.inputs.sub_checkpoints = mrclass_sub_cp
             mrclass.inputs.body_part = mrclass_bp
             mrclass.inputs.network = 'mrclass'
+            mrclass.inputs.modality = 'MR'
         else:
             mr_rt_merge.inputs.in3 = None
         rt_sorting = nipype.MapNode(interface=RTDataSorting(), name='rt_sorting',
@@ -122,13 +139,14 @@ class DataCuration(BaseWorkflow):
 
         workflow.connect(file_check, 'out_list', prep, 'input_list')
         workflow.connect(prep, 'out_folder', rt_sorting, 'input_dir')
-        workflow.connect(prep, 'for_inference', bp_class, 'images2label')
-        workflow.connect(bp_class, 'output_dict', mr_rt_merge, 'in1')
+        workflow.connect(prep, 'for_inference_ct', bp_class_ct, 'images2label')
+        workflow.connect(bp_class_ct, 'output_dict', mr_rt_merge, 'in1')
         workflow.connect(rt_sorting, 'output_dict', mr_rt_merge, 'in2')
         workflow.connect(mr_rt_merge, 'out', merging, 'input_list')
         workflow.connect(merging, 'out_folder', datasink, 'tosink')
         if mr_classiffication:
-            workflow.connect(bp_class, 'labeled_images', mrclass, 'images2label')
+            workflow.connect(prep, 'for_inference_mr', bp_class_mr, 'images2label')
+            workflow.connect(bp_class_mr, 'labeled_images', mrclass, 'images2label')
             workflow.connect(mrclass, 'output_dict', mr_rt_merge, 'in3')
         
         return workflow

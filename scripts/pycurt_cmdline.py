@@ -6,6 +6,9 @@ from pycurt.workflows.rt import RadioTherapy
 from pycurt.utils.config import (
     create_subject_list, download_mrclass_weights,
     parameters_config, check_free_space)
+from nipype import config
+cfg = dict(execution={'hash_method': 'timestamp'})
+config.update_config(cfg)
 
 
 def main():

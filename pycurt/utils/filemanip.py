@@ -4,6 +4,7 @@ import math
 import glob
 import shutil
 from pathlib import Path
+import math
 
 
 ALLOWED_EXT = ['.xlsx', '.csv']
@@ -114,7 +115,9 @@ def create_move_toDir(fileName, dirName, actRange):
     folderName=Path(fileName[0:-7])
     indices = [i for i, x in enumerate(folderName.parts[-1]) if x == "-"]
     indices2 = [i for i, x in enumerate(dirName) if x == "/"]
-    
+
+    if math.isnan(actRange):
+        actRange = 0
     if not os.path.exists(dirName) and not os.path.isdir(dirName):
         os.makedirs(dirName)
         print(folderName)

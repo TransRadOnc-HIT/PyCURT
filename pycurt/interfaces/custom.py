@@ -356,6 +356,7 @@ class ImageClassificationInputSpec(BaseInterfaceInputSpec):
     
     images2label = traits.Dict(desc='List of images to be labelled.')
     checkpoints = traits.Dict(desc='Classification network weights.')
+    modality = traits.Str(desc='Image modality ("MR" or "CT").')
     sub_checkpoints = traits.Dict(
         desc='Classification network weights for within modality inference '
         '(i.e. for T1 vs T1KM classification).')
@@ -390,16 +391,26 @@ class ImageClassification(BaseInterface):
         checkpoints = self.inputs.checkpoints
         sub_checkpoints = self.inputs.sub_checkpoints
         images2label = self.inputs.images2label
-        output_dir = os.path.abspath(self.inputs.out_folder)
+#         output_dir = os.path.abspath(self.inputs.out_folder)
         body_part = self.inputs.body_part
         cl_network = self.inputs.network
+        modality = self.inputs.modality
 
-        if cl_network == 'mrclass' and 'MR' in images2label.keys():
-            mr_modality = {}
-            mr_modality['MR'] = images2label['MR']
-            images2label = mr_modality
-        elif cl_network == 'mrclass':
-            images2label = {}
+#         images2label = {} 
+#         if images2label_list and isinstance(images2label_list, list):
+#             if isinstance(images2label_list[0], dict):
+#                 images2label = images2label_list[0]
+#             else:
+#                 images2label[modality] = images2label_list
+#         elif isinstance(images2label_list, dict):
+#             images2label = images2label_list
+            
+#         if cl_network == 'mrclass' and 'MR' in images2label.keys():
+#             mr_modality = {}
+#             mr_modality['MR'] = images2label['MR']
+#             images2label = mr_modality
+#         elif cl_network == 'mrclass':
+#             images2label = {}
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         data_transforms = transforms.Compose(
@@ -431,7 +442,7 @@ class ImageClassification(BaseInterface):
                     index = output.data.cpu().numpy().argmax()
                     if index == 0:
                         labeled[img_name[0]].append([cl, actRange])
-                       
+                          
             # check double classification and compare the activation value of class 0
             for key in labeled.keys():
                 r = 0
@@ -441,20 +452,20 @@ class ImageClassification(BaseInterface):
                         r = labeled[key][i][1]
                         j = i
                 labeled[key] = labeled[key].pop(j)
-                   
+                      
             # check for the unlabeled images
             not_labeled = list(set(for_inference) - set(list(labeled.keys())))
             for img in not_labeled:
                 labeled[img] = ['other', 0]
-                   
+                      
             # prepare for subclassification   
             labeled_images[modality] = defaultdict(list)
             for key in labeled.keys():
                 labeled_images[modality][labeled[key][0]].append(key)
-                           
+                              
             # subclassification        
             labeled_sub = defaultdict(list)
-                   
+                      
             for cl in sub_checkpoints.keys():
                 model, class_names, scan = load_checkpoint(sub_checkpoints[cl])
                 test_dataset = MRClassifierDataset(list_images = labeled_images[modality][cl], 
@@ -476,15 +487,15 @@ class ImageClassification(BaseInterface):
                     else:
                         c = ''
                     labeled_sub[img_name[0]] = [cl+c, actRange]
-                            
+                               
             for key in labeled_sub.keys():
                 labeled[key] = labeled_sub[key]
-                     
-#             with open('/home/fsforazz/ww.pickle{}{}'.format(cl_network, modality), 'wb') as f:
-#                 pickle.dump(labeled, f, protocol=pickle.HIGHEST_PROTOCOL)
-#                 
-#             with open('/home/fsforazz/ww.pickle{}{}'.format(cl_network, modality), 'rb') as handle:
-#                 labeled = pickle.load(handle)
+                        
+            with open('/home/fsforazz/ww.pickle{}{}'.format(cl_network, modality), 'wb') as f:
+                pickle.dump(labeled, f, protocol=pickle.HIGHEST_PROTOCOL)
+                   
+            with open('/home/fsforazz/ww.pickle{}{}'.format(cl_network, modality), 'rb') as handle:
+                labeled = pickle.load(handle)
     
             labeled_images[modality] = defaultdict(list)
             for key in labeled.keys():
@@ -522,6 +533,7 @@ class ImageClassification(BaseInterface):
                         self.output_dict[modality][key] = self.labelled_images[modality][key]
             else:
                 self.output_dict[modality] = None
+            
 #                         for cm in self.labelled_images[modality][key]:
 #                             indices = [i for i, x in enumerate(cm[0]) if x == "/"]
 #                             if modality == 'MR':
