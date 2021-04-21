@@ -491,11 +491,11 @@ class ImageClassification(BaseInterface):
             for key in labeled_sub.keys():
                 labeled[key] = labeled_sub[key]
                         
-            with open('/home/fsforazz/ww.pickle{}{}'.format(cl_network, modality), 'wb') as f:
-                pickle.dump(labeled, f, protocol=pickle.HIGHEST_PROTOCOL)
-                   
-            with open('/home/fsforazz/ww.pickle{}{}'.format(cl_network, modality), 'rb') as handle:
-                labeled = pickle.load(handle)
+#             with open('/home/fsforazz/ww.pickle{}{}'.format(cl_network, modality), 'wb') as f:
+#                 pickle.dump(labeled, f, protocol=pickle.HIGHEST_PROTOCOL)
+#                    
+#             with open('/home/fsforazz/ww.pickle{}{}'.format(cl_network, modality), 'rb') as handle:
+#                 labeled = pickle.load(handle)
     
             labeled_images[modality] = defaultdict(list)
             for key in labeled.keys():

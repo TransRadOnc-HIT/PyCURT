@@ -36,11 +36,11 @@ bp_mr_sub_cp = {'hnc': PARENT_DIR + '/checkpoints_new/bpclass_mr/brain_hnc_0.962
 # 
 # mr_sub_cp = {'T1':PARENT_DIR + '/checkpoints_new/mrclass_hnc/T1_T1KM_0.9892.pth'}
 
-mr_cp = {'ADC':PARENT_DIR+'/checkpoints_new/mrclass_abd-pel/ADC_other_0.9953.pth',
+mrclass_cp = {'ADC':PARENT_DIR+'/checkpoints_new/mrclass_abd-pel/ADC_other_0.9953.pth',
          'T1':PARENT_DIR+'/checkpoints_new/mrclass_abd-pel/T1_other_0.9052.pth',
          'T2':PARENT_DIR+'/checkpoints_new/mrclass_abd-pel/T2_other_0.8756.pth'}
 
-mr_sub_cp = {'T1':PARENT_DIR + '/checkpoints_new/mrclass_abd-pel/T1_T1KM_0.8966.pth'}
+mrclass_sub_cp = {'T1':PARENT_DIR + '/checkpoints_new/mrclass_abd-pel/T1_T1KM_0.8966.pth'}
 
 
 class DataCuration(BaseWorkflow):
@@ -67,11 +67,10 @@ class DataCuration(BaseWorkflow):
 
         return output_specs
 
-    def sorting_workflow(self, subject_name_position=-3, renaming=False,
-                         mrclass_cp=mr_cp,
-                         mrclass_sub_cp=mr_sub_cp, bp_class_ct_cp=bp_ct_cp,
-                         bp_class_ct_sub_cp=bp_ct_sub_cp, bp=['hnc', 'hncKM'],
-                         bp_class_mr_cp=bp_mr_cp, bp_class_mr_sub_cp=bp_mr_sub_cp,
+    def sorting_workflow(self, bp_class_mr_cp, bp_class_mr_sub_cp,
+                         mrclass_cp, mrclass_sub_cp, bp_class_ct_cp,
+                         bp_class_ct_sub_cp, bp=['hnc', 'hncKM'],
+                         subject_name_position=-3, renaming=False,
                          mrrt_max_time_diff=15, rert_max_time=42):
 
         mrclass_bp = [x for x in bp if x in ['hnc', 'abd-pel', 'hncKM']]
@@ -262,18 +261,22 @@ class DataCuration(BaseWorkflow):
         return workflow
 
     def workflow_setup(self, data_sorting=False, subject_name_position=-3,
-                       renaming=False, mrclass_cp=mr_cp,
-                       mrclass_sub_cp=mr_sub_cp, mrrt_max_time_diff=15, rert_max_time=42,
-                       body_parts=['hnc', 'hncKM']):
+                       renaming=False, mrrt_max_time_diff=15,
+                       rert_max_time=42, body_parts=['hnc', 'hncKM'],
+                       mrclass_cp=None, mrclass_sub_cp=None,
+                       bp_ct_cp=None, bp_ct_sub_cp=None,
+                       bp_mr_cp=None, bp_mr_sub_cp=None):
 
         if data_sorting:
             workflow = self.sorting_workflow(
                 subject_name_position=subject_name_position,
                 renaming=renaming,
-                mrclass_cp=mrclass_cp, mrclass_sub_cp=mrclass_sub_cp,
-                mrrt_max_time_diff=mrrt_max_time_diff, rert_max_time=rert_max_time,
-                bp=body_parts)
-
+                mrrt_max_time_diff=mrrt_max_time_diff,
+                rert_max_time=rert_max_time,
+                bp=body_parts, mrclass_cp=mrclass_cp,
+                mrclass_sub_cp=mrclass_sub_cp, bp_class_ct_cp=bp_ct_cp,
+                bp_class_ct_sub_cp=bp_ct_sub_cp,
+                bp_class_mr_cp=bp_mr_cp, bp_class_mr_sub_cp=bp_mr_sub_cp)
         else:
             workflow = self.convertion_workflow()
 

@@ -1,0 +1,78 @@
+# Number of cores to use to run the registration workflow
+# in parallel. Default is 0, which means the workflow will run linearly.
+nummber-of-cores: 0
+
+# Whether or not to sort the data before convertion.
+# If not, the software assumes you ran the folder sorting
+# before using PyCURT. Default is True.
+data_sorting: True
+
+# The position of the subject ID in the image path has to be specified
+# (assuming it will be the same for all the files). For example,
+# the position in the  subject ID (sub1) for a file called
+# "/mnt/sdb/tosort/sub1/session1/image.dcm", will be 4
+# (or -3, remember that in Python numbering starts from 0).
+# By default, is the third position starting from the end of the path.
+subject-name-position: -3
+
+# The body part(s) you are interested in. You can choose among:
+# -hnc: head and neck
+# -hncKM: head only (no neck)
+# -abd-pel: abdominal-pelvic
+# -wb: whole body (no head)
+# -wbKM: whole body plus head
+# -lung: lungs
+# Multiple body parts of interest are allowed.
+# Please be aware that the MR image classification works only 
+# for hnc, hncKM and abd-pel. For the other parts, you will only
+# get CT and RT data sorted.
+body_part:
+    - 'hnc'
+    - 'hncKM'
+
+# If you do not want to run the data convertion after sorting,
+# then set this to False
+data_curation: True
+
+# Change to True if you want to use the information stored
+# in the DICOM header to rename the subject and sessions
+# folders. Be warned that sometimes DICOMs do not have this
+# information causing the software to ignore that file.
+renaming: False
+
+# This is the maximum time, in days, between the radiotherapy
+# session and the MR planning session. If not MR sessions are
+# found BEFORE or on the same day of the RT, then PyCURT will
+# check this number of days AFTER RT date to see if there are any
+# MR session(s). It will take the first MR session in this time
+# window, if any.
+mrrt-max-time-diff: 15
+
+# PyCURT will treat any RT timepoint found 42 days after the firt 
+# RT as replanning-RT. Any RT session after 42 days will be considered 
+# as recurrent irradiation and the subject will be splitted.
+# You can change this number based on your entity.
+replanning_rt-max-time-diff: 42
+
+# Change this to False if you do not want to extract all the structures
+# in the RT strucuture set (if any).
+extract-rts: True
+
+# PyCURT will save ONLY the structure (within the RT structure set)
+# that has the highest overlap with the dose distribution (if present).
+# If you want to save ALL of them, change this to False.
+select-rts: True
+
+# Change this to False if you DO NOT want to have a local database with
+# all the outputs from the different workflows saved together. If False,
+# each workflow will have its own output folder.
+local-sink: True
+
+# If you create the local database, you can change the name of the
+# project folder here.
+local-project-id: 'PyCURT_sorting_database'
+
+# By default, the folder where the local database will be created is 
+# the working directory. If you want to save it in a different folder
+# you can provide the full path here.
+local-basedir: ''
