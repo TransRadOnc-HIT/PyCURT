@@ -22,6 +22,7 @@ import SimpleITK as sitk
 from datetime import datetime as dt
 from datetime import timedelta
 from pycurt.utils.filemanip import create_move_toDir
+from scipy.optimize._tstutils import aps10_f
 
 
 iflogger = logging.getLogger('nipype.interface')
@@ -445,7 +446,7 @@ class FileCheck(BaseInterface):
         z = 0
         for path, _, files in os.walk(input_dir):
             for f in files:
-                if '.dcm' in f:
+                if '.dcm' in f or '.ima' in f.lower():
                     filename = os.path.join(path, f)
 #                     iflogger.info('Process number: {}\n File: {}'.format(z, filename))
                     try:
@@ -588,29 +589,31 @@ class FolderPreparation(BaseInterface):
                 new_image, i = label_move_image(i, modality_check, out_dir,
                                                 renaming=False)
                 if modality_check == 'CT':
-                    converter = DicomConverter(new_image)
-                    nifti_image = converter.convert(rename_dicom=True, force=True)
-                    if nifti_image is not None:
-                        for_inference_ct['CT'].append(nifti_image)
+                    if len(dcm_files) > 20:
+                        converter = DicomConverter(new_image)
+                        nifti_image = converter.convert(rename_dicom=True, force=True)
+                        if nifti_image is not None:
+                            for_inference_ct['CT'].append(nifti_image)
 #                     else:
 #                         label_move_image(i, 'error_converting', out_dir,
 #                                          renaming=False)
 #                         iflogger.info('Error converting', str(new_image))
             elif modality_check in modality_list_inference:
                 #checking for duplicates or localizer
-                new_image, i = label_move_image(i, '', out_dir,
-                                                renaming=False)
-                dicoms, im_types, series_nums = dcm_info(new_image)
-                dicoms_fl = dcm_check(dicoms, im_types, series_nums)
-#                 corrupted = [f for f in dicoms if str(f) not in dicoms_fl]
-                [os.remove(f) for f in dicoms if str(f) not in dicoms_fl]
-                good = [f for f in dicoms if str(f) in dicoms_fl]
-#                 [os.remove(f) for f in dicoms if str(f) not in dicoms_fl]
-                if good:
-                    converter = DicomConverter(new_image)
-                    nifti_image = converter.convert(rename_dicom=True)
-                    if nifti_image is not None:
-                        for_inference_mr['MR'].append(nifti_image)
+                if len(dcm_files) > 10:
+                    new_image, i = label_move_image(i, '', out_dir,
+                                                    renaming=False)
+                    dicoms, im_types, series_nums = dcm_info(new_image)
+                    dicoms_fl = dcm_check(dicoms, im_types, series_nums)
+    #                 corrupted = [f for f in dicoms if str(f) not in dicoms_fl]
+                    [os.remove(f) for f in dicoms if str(f) not in dicoms_fl]
+                    good = [f for f in dicoms if str(f) in dicoms_fl]
+    #                 [os.remove(f) for f in dicoms if str(f) not in dicoms_fl]
+                    if good:
+                        converter = DicomConverter(new_image)
+                        nifti_image = converter.convert(rename_dicom=True)
+                        if nifti_image is not None:
+                            for_inference_mr['MR'].append(nifti_image)
 #                     else:
 #                         label_move_image(i, 'error_converting', out_dir,
 #                                          renaming=False)
