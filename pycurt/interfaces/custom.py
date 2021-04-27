@@ -2,11 +2,13 @@ import glob
 import pydicom
 import os
 import shutil
+import nibabel as nib
 import subprocess as sp
+import numpy as np
 from collections import defaultdict
 from nipype.interfaces.base import (
     BaseInterface, TraitedSpec, Directory,
-    BaseInterfaceInputSpec, traits)
+    BaseInterfaceInputSpec, traits, InputMultiPath)
 from nipype.interfaces.base import isdefined
 from torchvision import transforms
 import torch
@@ -14,9 +16,13 @@ from torch.utils.data import DataLoader
 from pycurt.utils.torch import (
     resize_2Dimage, ZscoreNormalization, ToTensor,
     load_checkpoint, MRClassifierDataset)
-from pycurt.utils.filemanip import create_move_toDir
-from copy import deepcopy
-import pickle
+import nrrd
+import cv2
+from scipy.ndimage.interpolation import rotate
+from scipy import ndimage
+from skimage.measure import label, regionprops
+from core.utils.filemanip import split_filename
+import matplotlib.pyplot as plot
 
 
 ExplicitVRLittleEndian = '1.2.840.10008.1.2.1'
@@ -556,3 +562,211 @@ class ImageClassification(BaseInterface):
 
         return outputs
 
+
+class MouseCroppingInputSpec(BaseInterfaceInputSpec):
+    
+    ct = InputMultiPath(traits.File(exists=True), desc='Mouse clinical CT image to crop')
+    out_folder = Directory('Cropping_dir', usedefault=True,
+                           desc='Folder to store the cropping results.')
+
+
+class MouseCroppingOutputSpec(TraitedSpec):
+    
+    cropped_dir = Directory(desc='Directory with all the cropped images.')
+    cropped_images = traits.List()
+
+
+class MouseCropping(BaseInterface):
+
+    input_spec = MouseCroppingInputSpec
+    output_spec = MouseCroppingOutputSpec
+    
+    def _run_interface(self, runtime):
+
+        images = self.inputs.ct
+        base_output_dir = os.path.abspath(self.inputs.out_folder)
+        for image in images:
+            sub_name, session, _, im_name = image.split('/')[-4:]
+            base_outname = im_name.split('-')[0]
+            output_dir = os.path.join(base_output_dir, sub_name, session)
+            if not os.path.isdir(output_dir):
+                os.makedirs(output_dir)
+            _, _, extention = split_filename(image)
+            if extention == '.nii.gz' or extention == '.nii':
+                ref = nib.load(image)
+                ref = nib.as_closest_canonical(ref)
+                image_hd = ref.header
+                space_x, space_y, space_z = image_hd.get_zooms()
+                im = ref.get_fdata()
+            elif extention == '.nrrd':
+                im, image_hd = nrrd.read(image)
+                space_x = np.abs(image_hd['space directions'][0, 0])
+                space_y = np.abs(image_hd['space directions'][1, 1])
+                space_z = np.abs(image_hd['space directions'][2, 2])
+            process = True
+            out = []
+    
+            min_size_x = int(17 / space_x)
+            if min_size_x > im.shape[0]:
+                min_size_x = im.shape[0]
+            min_size_y = int(30 / space_y)
+            if min_size_y > im.shape[1]:
+                min_size_y = im.shape[1]
+            min_size_z = int(60 / space_z)
+            if min_size_z > im.shape[2]:
+                min_size_z = im.shape[2]
+    
+            _, _, dimZ = im.shape
+    
+            mean_Z = int(np.ceil((dimZ)/2))
+            n_mice_detected = []
+            not_correct = True
+            angle = 0
+            counter = 0
+            while not_correct:
+                im[im<np.min(im)+824] = np.min(im)
+                im[im == 0] = np.min(im)
+                for offset in [20, 10, 0, -10, -20]:
+                    _, y1 = np.where(im[:, :, mean_Z+offset] != np.min(im))
+                    im[:, np.min(y1)+min_size_y+10:, mean_Z+offset] = 0
+                    img2, _, _ = self.find_cluster(im[:, :, mean_Z+offset], space_x)
+                    labels = label(img2)
+                    regions = regionprops(labels)
+                    if regions:
+                        n_mice_detected.append(len(regions))
+                        if offset == 0:
+                            xx = [x for y in [[x.bbox[0], x.bbox[2]] for x in regions] for x in y]
+                            yy = [x for y in [[x.bbox[1], x.bbox[3]] for x in regions] for x in y]
+                    else:
+                        n_mice_detected.append(0)
+                if len(set(n_mice_detected)) == 1 or (len(set(n_mice_detected)) == 2 and 0 in set(n_mice_detected)):
+                    not_correct = False
+                elif counter < 8:
+                    angle = angle - 2
+                    print('Different number of mice have been detected going from down-up '
+                                   'in the image. This might be due to an oblique orientation '
+                                   'of the mouse trail. The CT image will be rotated about the z '
+                                   'direction of %f degrees', np.abs(angle))
+                    n_mice_detected = []
+                    if extention == '.nii.gz' or extention == '.nii':
+                        im = nib.load(image)
+                        im = nib.as_closest_canonical(im)
+                        im = im.get_fdata()
+                    elif extention == '.nrrd':
+                        im, _ = nrrd.read(image)
+                    im = rotate(im, angle, (0, 2), reshape=False, order=0)
+                    counter += 1
+                    if counter % 2 == 0:
+                        mean_Z = mean_Z - 10
+                else:
+                    print('CT image has been rotated of 14° but the number of mice detected '
+                                   'is still not the same going from down to up. This CT cannot be '
+                                   'cropped properly and will be excluded.')
+                    process = False
+                    not_correct = False
+    
+            if process:
+                if extention == '.nii.gz' or extention == '.nii':
+                    im = nib.load(image)
+                    im = nib.as_closest_canonical(im)
+                    im = im.get_fdata()
+                elif extention == '.nrrd':
+                    im, _ = nrrd.read(image)
+                if angle != 0:
+                    im = rotate(im, angle, (0, 2), reshape=False, order=0)
+                    im[im == 0] = np.min(im)
+                im[im<np.min(im)+824] = np.min(im)
+                im[im == 0] = np.min(im)
+                im = im[xx[0]:xx[1], yy[0]:yy[1], :]
+                hole_size = np.zeros(im.shape[2])
+                offset_z = int((im.shape[2]-min_size_z)/2)
+                for z in range(offset_z, im.shape[2]-offset_z):
+                    _, _, zeros = self.find_cluster(im[:, :, z], space_x)
+                    hole_size[z] = zeros
+                mean_Z = np.where(hole_size==np.max(hole_size))[0][0]
+                if extention == '.nii.gz' or extention == '.nii':
+                    im = nib.load(image)
+                    im = nib.as_closest_canonical(im)
+                    im = im.get_fdata()
+                elif extention == '.nrrd':
+                    im, _ = nrrd.read(image)
+                if angle != 0:
+                    im = rotate(im, angle, (0, 2), reshape=False, order=0)
+                    im[im == 0] = np.min(im)
+                im[im<np.min(im)+824] = np.min(im)
+                im[im == 0] = np.min(im)
+    
+                _, y1 = np.where(im[:, :, mean_Z] != np.min(im))
+                im[:, np.min(y1)+min_size_y+10:, mean_Z] = 0
+                img2, _, _ = self.find_cluster(im[:, :, mean_Z], space_x)
+                labels = label(img2)
+                regions = regionprops(labels)
+                xx = [x for y in [[x.bbox[0], x.bbox[2]] for x in regions] for x in y]
+                yy = [x for y in [[x.bbox[1], x.bbox[3]] for x in regions] for x in y]
+    
+                if extention == '.nii.gz' or extention == '.nii':
+                    im = nib.load(image)
+                    im = nib.as_closest_canonical(im)
+                    im = im.get_fdata()
+                elif extention == '.nrrd':
+                    im, _ = nrrd.read(image)
+                if angle != 0:
+                    im = rotate(im, angle, (0, 2), reshape=False, order=0)
+                    im[im == 0] = np.min(im)
+    
+                average_mouse_size = int(np.round(np.mean([xx[i+1]-xx[i] for i in range(0, len(xx), 2)])))
+    
+                average_hole_size = average_mouse_size // 2
+                
+                image_names = ['mouse_0{}'.format(x+1) for x in range(int(len(xx)//2))]
+    
+                offset_box = average_hole_size // 3
+                y_min = np.min(yy) - offset_box
+                y_max = np.max(yy) + offset_box
+                for n_mice, i in enumerate(range(0, len(xx), 2)):
+                    croppedImage = im[xx[i]-offset_box:xx[i+1]+offset_box, y_min:y_max,
+                                      mean_Z-int(min_size_z/2):mean_Z+int(min_size_z/2)]
+    
+                    outname = os.path.join(
+                        output_dir, base_outname+'_{}{}'.format(image_names[n_mice], extention))
+                    if extention == '.nii.gz' or extention == '.nii':
+                        im2save = nib.Nifti1Image(croppedImage, affine=ref.affine)
+                        nib.save(im2save, outname)
+                    elif extention == '.nrrd':
+                        nrrd.write(outname, croppedImage, header=image_hd)
+                    out.append(outname)
+
+        self.cropped_images = out
+
+        return runtime
+
+    def find_cluster(self, im, spacing):
+
+        im[im == np.min(im)] = 0
+        im[im != 0] = 1
+
+        nb_components, output, stats, _ = (
+            cv2.connectedComponentsWithStats(im.astype(np.uint8),
+                                             connectivity=8))
+        sizes = stats[1:, -1]
+        nb_components = nb_components - 1
+        min_size = 100/spacing
+        img2 = np.zeros((output.shape))
+        cluster_size = []
+        for i in range(0, nb_components):
+            if sizes[i] >= min_size:
+                cluster_size.append(sizes[i])
+                img2[output == i + 1] = 1
+        img2_filled = ndimage.binary_fill_holes(img2)
+        zeros = np.sum(img2_filled-img2)
+
+        return img2, cluster_size, zeros
+
+    def _list_outputs(self):
+        outputs = self._outputs().get()
+        if isdefined(self.inputs.out_folder):
+            outputs['cropped_dir'] = os.path.abspath(
+                self.inputs.out_folder)
+            outputs['cropped_images'] = self.cropped_images
+
+        return outputs

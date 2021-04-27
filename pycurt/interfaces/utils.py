@@ -22,7 +22,6 @@ import SimpleITK as sitk
 from datetime import datetime as dt
 from datetime import timedelta
 from pycurt.utils.filemanip import create_move_toDir
-from scipy.optimize._tstutils import aps10_f
 
 
 iflogger = logging.getLogger('nipype.interface')
@@ -532,6 +531,7 @@ class FolderPreparationOutputSpec(TraitedSpec):
                                 'mrclass or bpclass.')
     for_inference_mr = traits.Dict(help='Dictionary of images to be classified using '
                                 'mrclass or bpclass.')
+    to_crop = traits.List(help='CT image to crop in case of preclinical study.')
 
 
 class FolderPreparation(BaseInterface):
@@ -575,7 +575,7 @@ class FolderPreparation(BaseInterface):
         for i in images:
             if os.path.isdir(i):
                 dcm_files = [os.path.join(i, item) for item in os.listdir(i)
-                             if ('.dcm' in item)]
+                             if ('.dcm' in item or '.ima' in item.lower())]
             else:
                 continue
             try:
@@ -635,6 +635,7 @@ class FolderPreparation(BaseInterface):
                 self.inputs.out_folder)
             outputs['for_inference_ct'] = self.for_inference_ct
             outputs['for_inference_mr'] = self.for_inference_mr
+            outputs['to_crop'] = self.for_inference_ct['CT']
 
         return outputs
 
@@ -1162,6 +1163,47 @@ class SinkSorting(BaseInterface):
             os.makedirs(out_folder)
         if os.path.isdir(tosink):
             shutil.move(tosink, out_folder)
+
+        return runtime
+    
+    def _list_outputs(self):
+        outputs = self._outputs().get()
+        if isdefined(self.inputs.out_folder):
+            outputs['out_folder'] = self.inputs.out_folder
+
+        return outputs
+
+
+class PreclinicalSinkInputSpec(BaseInterfaceInputSpec):
+    
+    tosink = traits.List(help='List of directories to sink.')
+    out_folder = Directory('Sorted_data', usedefault=True,
+                           desc='Folder with sorted data.')
+
+
+class PreclinicalSinkOutputSpec(TraitedSpec):
+    
+    out_folder = Directory(help='Folder with converted data.')
+
+
+class PreclinicalSink(BaseInterface):
+    
+    input_spec = PreclinicalSinkInputSpec
+    output_spec = PreclinicalSinkOutputSpec
+    
+    def _run_interface(self, runtime):
+
+        tosinks = self.inputs.tosink
+        out_folder = os.path.join(self.inputs.out_folder, 'Sorted_data')
+        if not os.path.isdir(out_folder):
+            os.makedirs(out_folder)
+        
+        for tosink in tosinks:
+            subs = glob.glob(tosink+'/*')
+            for sub in subs:
+                sub_name = sub.split('/')[-1]
+                result_dir = os.path.join(out_folder, sub_name)
+                shutil.copytree(sub, result_dir)
 
         return runtime
     
