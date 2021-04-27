@@ -79,7 +79,7 @@ def untar(fname):
 
     untar_dir = os.path.split(fname)[0]
     if fname.endswith("tar.gz"):
-        tar = tarfile.open(fname)
+        tar = tarfile.open(fname, "r:gz")
         tar.extractall(path=untar_dir)
         tar.close()
         print("Extracted in Current Directory")

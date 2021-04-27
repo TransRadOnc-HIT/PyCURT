@@ -24,7 +24,7 @@ setup(name='PyCURT',
       'opencv-python==4.2.0.34',
       'requests==2.22.0',
       'SimpleITK==1.2.4',
-      'yaml'
+      'pyyaml',
       'nipype',
       'core'],
       data_files=[('resources', ['resources/random.nii.gz'])],

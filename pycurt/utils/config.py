@@ -50,7 +50,7 @@ def download_cl_network_weights(
     except:
         raise Exception('Unable to download: {}!'.format(todownload))
 
-    weights = [w for w in sorted(glob.glob(os.path.join(weights_dir, '*.pth')))]
+    weights = [w for w in sorted(glob.glob(os.path.join(weights_dir, todownload, '*.pth')))]
     
     checkpoints = {}
     sub_checkpoints = {}

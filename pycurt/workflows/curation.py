@@ -264,8 +264,8 @@ class DataCuration(BaseWorkflow):
                        renaming=False, mrrt_max_time_diff=15,
                        rert_max_time=42, body_parts=['hnc', 'hncKM'],
                        mrclass_cp=None, mrclass_sub_cp=None,
-                       bp_ct_cp=None, bp_ct_sub_cp=None,
-                       bp_mr_cp=None, bp_mr_sub_cp=None):
+                       bp_class_ct_cp=None, bp_class_ct_sub_cp=None,
+                       bp_class_mr_cp=None, bp_class_mr_sub_cp=None):
 
         if data_sorting:
             workflow = self.sorting_workflow(
@@ -274,9 +274,9 @@ class DataCuration(BaseWorkflow):
                 mrrt_max_time_diff=mrrt_max_time_diff,
                 rert_max_time=rert_max_time,
                 bp=body_parts, mrclass_cp=mrclass_cp,
-                mrclass_sub_cp=mrclass_sub_cp, bp_class_ct_cp=bp_ct_cp,
-                bp_class_ct_sub_cp=bp_ct_sub_cp,
-                bp_class_mr_cp=bp_mr_cp, bp_class_mr_sub_cp=bp_mr_sub_cp)
+                mrclass_sub_cp=mrclass_sub_cp, bp_class_ct_cp=bp_class_ct_cp,
+                bp_class_ct_sub_cp=bp_class_ct_sub_cp,
+                bp_class_mr_cp=bp_class_mr_cp, bp_class_mr_sub_cp=bp_class_mr_sub_cp)
         else:
             workflow = self.convertion_workflow()
 
