@@ -718,7 +718,7 @@ class MouseCropping(BaseInterface):
     
                 average_hole_size = average_mouse_size // 2
                 
-                image_names = ['mouse_0{}'.format(x+1) for x in range(int(len(xx)//2))]
+                image_names = ['mouse-0{}'.format(x+1) for x in range(int(len(xx)//2))]
     
                 offset_box = average_hole_size // 3
                 y_min = np.min(yy) - offset_box
@@ -728,7 +728,7 @@ class MouseCropping(BaseInterface):
                                       mean_Z-int(min_size_z/2):mean_Z+int(min_size_z/2)]
     
                     outname = os.path.join(
-                        output_dir, base_outname+'_{}{}'.format(image_names[n_mice], extention))
+                        output_dir, base_outname+'-{}{}'.format(image_names[n_mice], extention))
                     if extention == '.nii.gz' or extention == '.nii':
                         im2save = nib.Nifti1Image(croppedImage, affine=ref.affine)
                         nib.save(im2save, outname)

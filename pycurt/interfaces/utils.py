@@ -27,6 +27,7 @@ from pycurt.utils.filemanip import create_move_toDir
 iflogger = logging.getLogger('nipype.interface')
 
 
+ILLEGAL_CHARACTERS = ['/', '(', ')', '[', ']', '{', '}', ' ']
 RT_NAMES = ['RTSTRUCT', 'RTDOSE', 'RTPLAN', 'RTCT']
 POSSIBLE_NAMES = ['RTSTRUCT', 'RTDOSE', 'RTPLAN', 'T1KM', 'FLAIR',
                   'CT', 'ADC', 'T1', 'SWI', 'T2', 'T2KM', 'CT1',
@@ -549,9 +550,11 @@ class FolderPreparation(BaseInterface):
         scan_dates = input_list[2]
         for key in scans.keys():
             for file in scans[key]:
-                out_basename = os.path.join(patient_names[key][0],
-                                            scan_dates[key][0])
-                dir_name= os.path.join(output_dir, out_basename, key)
+                pn = patient_names[key][0]
+                for character in ILLEGAL_CHARACTERS:
+                    pn = pn.replace(character, '_')
+                out_basename = os.path.join(pn, scan_dates[key][0])
+                dir_name = os.path.join(output_dir, out_basename, key)
                 if not os.path.isdir(dir_name):
                     os.makedirs(dir_name)
                 shutil.copy2(Path(file), dir_name)
