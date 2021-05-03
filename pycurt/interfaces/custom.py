@@ -278,6 +278,10 @@ class RTDataSorting(BaseInterface):
 
         dcm_files = glob.glob(dir_name+'/*/*.dcm')
         other_dose = []
+        phy_dose = None
+        phy_name = None
+        rbe_name = None
+        rbe_dose = None
         for f in dcm_files:
 #             indices = [i for i, x in enumerate(f) if x == "/"]
             folder_name, f_name = f.split('/')[-2:]
@@ -320,8 +324,6 @@ class RTDataSorting(BaseInterface):
                         rbe_dose = f
                         
                     else:
-                        rbe_name = None
-                        rbe_dose = None
                         print('dose_RBE_Cube was not found.')
                 if dose_type == 'PHYSICAL':
                     if 'PLAN' in dose_summation_type:
@@ -335,11 +337,9 @@ class RTDataSorting(BaseInterface):
 #                         if not os.path.isdir(phy_dir):
 #                             os.makedirs(phy_dir)
 #                         shutil.copy2(f, phy_dir)
+                    else:
                         phy_dose = f
                         
-                    else:
-                        phy_dose = None
-                        phy_name = None
                         print('dose_Physical_Cube was not found.')
         return phy_dose, phy_name, rbe_dose, rbe_name, other_dose
 

@@ -603,7 +603,7 @@ class FolderPreparation(BaseInterface):
 #                         iflogger.info('Error converting', str(new_image))
             elif modality_check in modality_list_inference:
                 #checking for duplicates or localizer
-                if len(dcm_files) > 10:
+                if len(dcm_files) > 9:
                     new_image, i = label_move_image(i, '', out_dir,
                                                     renaming=False)
                     dicoms, im_types, series_nums = dcm_info(new_image)
