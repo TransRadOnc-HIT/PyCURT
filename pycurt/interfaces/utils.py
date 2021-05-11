@@ -782,7 +782,8 @@ class FolderMerge(BaseInterface):
                     other_dir = os.path.join(
                         out_dir, sub_name, session, 'RTDOSE', 'Other_RTDOSE')
                     os.makedirs(other_dir)
-                    [shutil.copytree(x, os.path.join(other_dir, x.split('/')[-1]))
+                    [shutil.copytree('/'.format(x.split('/')[:-1]),
+                                     os.path.join(other_dir, x.split('/')[-2]))
                      for x in rt_dict[rt_tp]['other_rtdose']]
             if session_dict['RT']:
                 self.session_labelling(session_dict, rert_max_time, mrrt_max_time_diff)
