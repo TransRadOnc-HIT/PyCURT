@@ -22,6 +22,7 @@ import SimpleITK as sitk
 from datetime import datetime as dt
 from datetime import timedelta
 from pycurt.utils.filemanip import create_move_toDir
+from builtins import FileNotFoundError
 
 
 iflogger = logging.getLogger('nipype.interface')
@@ -1056,14 +1057,17 @@ class FolderMerge(BaseInterface):
                                 fname = f.split('/')[-1]
                                 shutil.move(f, ct_outpath+'_FU'+'/{}'.format(fname))
                     elif ct_date == rt_date:
-                        if os.path.isdir(rt_path+'/RTCT'):
-                            shutil.rmtree(ct_path)
-                        else:
-                            ff = sorted(glob.glob(ct_path+'/*'))
-                            for f in ff:
-                                fname = f.split('/')[-1]
-                                shutil.move(f, rt_path+'/{}'.format(fname))
-                            shutil.rmtree(ct_path)
+                        try:
+                            if os.path.isdir(rt_path+'/RTCT'):
+                                shutil.rmtree(ct_path)
+                            else:
+                                ff = sorted(glob.glob(ct_path+'/*'))
+                                for f in ff:
+                                    fname = f.split('/')[-1]
+                                    shutil.move(f, rt_path+'/{}'.format(fname))
+                                shutil.rmtree(ct_path)
+                        except FileNotFoundError:
+                            continue
             sessions[basename] = list(set(sessions[basename]))
         if len(sessions) > 1:
             for key in sessions:
