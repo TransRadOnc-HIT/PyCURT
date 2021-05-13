@@ -740,12 +740,13 @@ class FolderMerge(BaseInterface):
                         [shutil.copytree(x, os.path.join(other_dir, x.split('/')[-1]))
                          for x in rt_dict[rt_tp]['other_rtplan']]
                 if 'rts' in rt_dict[rt_tp].keys():
-                    rts_dir = os.path.join(
-                        out_dir, sub_name, session, 'RTSTRUCT')
-                    os.makedirs(os.path.join(rts_dir, '1-RTSTRUCT_Used'),
-                                exist_ok=True)
-                    shutil.copy2(rt_dict[rt_tp]['rts'],
-                                 os.path.join(rts_dir, '1-RTSTRUCT_Used'))
+                    if rt_dict[rt_tp]['rts'] is not None:
+                        rts_dir = os.path.join(
+                            out_dir, sub_name, session, 'RTSTRUCT')
+                        os.makedirs(os.path.join(rts_dir, '1-RTSTRUCT_Used'),
+                                    exist_ok=True)
+                        shutil.copy2(rt_dict[rt_tp]['rts'],
+                                     os.path.join(rts_dir, '1-RTSTRUCT_Used'))
                     if rt_dict[rt_tp]['other_rts']:
                         other_dir = os.path.join(rts_dir, 'Other_RTSTRUCT')
                         os.makedirs(other_dir)
