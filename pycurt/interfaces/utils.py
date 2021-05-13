@@ -1077,7 +1077,10 @@ class FolderMerge(BaseInterface):
                 if not os.path.isdir(key):
                     os.makedirs(key)
                 for session in sessions[key]:
-                    shutil.move(session, key)
+                    try:
+                        shutil.move(session, key)
+                    except FileNotFoundError:
+                        continue
             shutil.rmtree(basepath)
                 
 
