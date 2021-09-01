@@ -593,7 +593,7 @@ class FolderPreparation(BaseInterface):
                 new_image, i = label_move_image(i, modality_check, out_dir,
                                                 renaming=False)
                 if modality_check == 'CT':
-                    if len(dcm_files) > 20:
+                    if len(dcm_files) > 10:
                         converter = DicomConverter(new_image)
                         nifti_image = converter.convert(rename_dicom=True, force=True)
                         if nifti_image is not None:
@@ -716,9 +716,12 @@ class FolderMerge(BaseInterface):
                     raise Exception('Multiple subject names found. Something went wrong.')
                 for folder_name in sub_info[modality]['sessions']:
                     sub_name = sub_info[modality]['sub_name'][0]
-                    session_dict[modality].append([os.path.join(
-                        out_dir, sub_name, folder_name),
-                        dt.strptime(folder_name, '%Y%m%d')])
+                    try:
+                        session_dict[modality].append([os.path.join(
+                            out_dir, sub_name, folder_name),
+                            dt.strptime(folder_name, '%Y%m%d')])
+                    except ValueError:
+                        iflogger.info('Folder {} cannot be labelled'.format(folder_name))
             rt_sub_names = []
             for rt_tp in rt_dict.keys():
                 sub_name, session = rt_tp.split('_')

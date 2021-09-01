@@ -13,20 +13,15 @@ from nipype.interfaces.utility import Merge
 POSSIBLE_SEQUENCES = ['t1', 'ct1', 't1km', 't2', 'flair', 'adc', 'swi', 'rtct',
                       'rtdose', 'rtplan', 'rtstruct']
 
-PARENT_DIR =  '/media/fsforazz/Samsung_T5/mr_class/'
+PARENT_DIR =  '/media/fsforazz/T7/bp_class_checkpoints/ct'
 
-bp_ct_cp = {'abd-pel':PARENT_DIR+'/checkpoints_new/bpclass_ct/abd-pel_other_09402.pth',
-                'lung':PARENT_DIR+'/checkpoints_new/bpclass_ct/lung_other_09957.pth',
-                'hnc':PARENT_DIR+'/checkpoints_new/bpclass_ct/hnc_other_09974.pth',
-                'wb':PARENT_DIR+'/checkpoints_new/bpclass_ct/wb_other_09775.pth'}
+bp_ct_cp = {'abd-pel':PARENT_DIR+'/ct/checkpoint_abd-pel_acc_0.97.pth',
+            'lung':PARENT_DIR+'/ct/checkpoint_lung_acc_0.97.pth',
+            'hnc':PARENT_DIR+'/ct/checkpoint_hnc_acc_0.99.pth'}
 
-bp_ct_sub_cp = {'wb':PARENT_DIR + '/checkpoints_new/bpclass_ct/wb_wbhead_09213.pth',
-                'hnc': PARENT_DIR + '/checkpoints_new/bpclass_ct/brain_hnc_0.9425.pth'}
+bp_mr_cp = {'abd-pel':PARENT_DIR+'/mr/checkpoint_mr_abd-pel_acc_0.94.pth',
+            'hnc':PARENT_DIR+'/mr/checkpoint_mr_hnc_acc_0.94.pth'}
 
-bp_mr_cp = {'abd-pel':PARENT_DIR+'/checkpoints_new/bpclass_mr/abd-pel_other_0.998.pth',
-            'hnc':PARENT_DIR+'/checkpoints_new/bpclass_mr/hnc_other_0.994.pth'}
-
-bp_mr_sub_cp = {'hnc': PARENT_DIR + '/checkpoints_new/bpclass_mr/brain_hnc_0.9624.pth'}
 
 # mr_cp = {'ADC':PARENT_DIR+'/checkpoints_new/mrclass_hnc/ADC_other_0.9986.pth',
 #          'T1':PARENT_DIR+'/checkpoints_new/mrclass_hnc/T1_other_0.9881.pth',
@@ -67,22 +62,21 @@ class DataCuration(BaseWorkflow):
 
         return output_specs
 
-    def sorting_workflow(self, bp_class_mr_cp, bp_class_mr_sub_cp,
-                         mrclass_cp, mrclass_sub_cp, bp_class_ct_cp,
-                         bp_class_ct_sub_cp, bp=['hnc', 'hncKM'],
+    def sorting_workflow(self, bp_class_mr_cp, mrclass_cp,
+                         mrclass_sub_cp, bp_class_ct_cp, bp=['hnc', 'hncKM'],
                          subject_name_position=-3, renaming=False,
                          mrrt_max_time_diff=15, rert_max_time=42):
 
-        mrclass_bp = [x for x in bp if x in ['hnc', 'abd-pel', 'hncKM']]
-        if not mrclass_bp:
-            print('MRClass will not run')
-            mr_classiffication = False
-            folder2merge = 2
-            folder2merge_iterfields = ['in1', 'in2']
-        else:
-            mr_classiffication = True
-            folder2merge = 3
-            folder2merge_iterfields = ['in1', 'in2', 'in3']
+        mrclass_bp = [x for x in bp if x in ['hnc', 'abd-pel']]
+#         if not mrclass_bp:
+#             print('MRClass will not run')
+        mr_classification = False
+        folder2merge = 3
+        folder2merge_iterfields = ['in1', 'in2', 'in3']
+#         else:
+#             mr_classiffication = True
+#             folder2merge = 3
+#             folder2merge_iterfields = ['in1', 'in2', 'in3']
 
         nipype_cache = os.path.join(self.nipype_cache, 'data_sorting')
         result_dir = self.result_dir
@@ -101,7 +95,6 @@ class DataCuration(BaseWorkflow):
                                   name='bpclass_ct',
                                   iterfield=['images2label'])
         bp_class_ct.inputs.checkpoints = bp_class_ct_cp
-        bp_class_ct.inputs.sub_checkpoints = bp_class_ct_sub_cp
         bp_class_ct.inputs.body_part = bp
         bp_class_ct.inputs.network = 'bpclass'
         bp_class_ct.inputs.modality = 'CT'
@@ -112,18 +105,10 @@ class DataCuration(BaseWorkflow):
         merging = nipype.Node(interface=FolderMerge(), name='merge')
         merging.inputs.mrrt_max_time_diff = mrrt_max_time_diff
         merging.inputs.rert_max_time = rert_max_time
-        if mr_classiffication:
+        if mr_classification:
             if mrclass_cp is None or mrclass_sub_cp is None:
                 raise Exception('MRClass weights were not provided, MR image '
                                 'classification cannot be performed!')
-            bp_class_mr = nipype.MapNode(interface=ImageClassification(),
-                                      name='bpclass_mr',
-                                      iterfield=['images2label'])
-            bp_class_mr.inputs.checkpoints = bp_class_mr_cp
-            bp_class_mr.inputs.sub_checkpoints = bp_class_mr_sub_cp
-            bp_class_mr.inputs.body_part = mrclass_bp
-            bp_class_mr.inputs.network = 'bpclass'
-            bp_class_mr.inputs.modality = 'MR'
             mrclass = nipype.MapNode(interface=ImageClassification(), name='mrclass',
                                      iterfield=['images2label'])
             mrclass.inputs.checkpoints = mrclass_cp
@@ -131,8 +116,16 @@ class DataCuration(BaseWorkflow):
             mrclass.inputs.body_part = mrclass_bp
             mrclass.inputs.network = 'mrclass'
             mrclass.inputs.modality = 'MR'
-        else:
-            mr_rt_merge.inputs.in3 = None
+            
+        bp_class_mr = nipype.MapNode(interface=ImageClassification(),
+                                  name='bpclass_mr',
+                                  iterfield=['images2label'])
+        bp_class_mr.inputs.checkpoints = bp_class_mr_cp
+        bp_class_mr.inputs.body_part = mrclass_bp
+        bp_class_mr.inputs.network = 'bpclass'
+        bp_class_mr.inputs.modality = 'MR'
+#         else:
+#             mr_rt_merge.inputs.in3 = 'None'
         rt_sorting = nipype.MapNode(interface=RTDataSorting(), name='rt_sorting',
                                     iterfield=['input_dir'])
 
@@ -143,10 +136,12 @@ class DataCuration(BaseWorkflow):
         workflow.connect(rt_sorting, 'output_dict', mr_rt_merge, 'in2')
         workflow.connect(mr_rt_merge, 'out', merging, 'input_list')
         workflow.connect(merging, 'out_folder', datasink, 'tosink')
-        if mr_classiffication:
-            workflow.connect(prep, 'for_inference_mr', bp_class_mr, 'images2label')
+        if mr_classification:
             workflow.connect(bp_class_mr, 'labeled_images', mrclass, 'images2label')
             workflow.connect(mrclass, 'output_dict', mr_rt_merge, 'in3')
+        else:
+            workflow.connect(prep, 'for_inference_mr', bp_class_mr, 'images2label')
+            workflow.connect(bp_class_mr, 'output_dict', mr_rt_merge, 'in3')
         
         return workflow
 
@@ -262,10 +257,9 @@ class DataCuration(BaseWorkflow):
 
     def workflow_setup(self, data_sorting=False, subject_name_position=-3,
                        renaming=False, mrrt_max_time_diff=15,
-                       rert_max_time=42, body_parts=['hnc', 'hncKM'],
+                       rert_max_time=42, body_parts=['hnc'],
                        mrclass_cp=None, mrclass_sub_cp=None,
-                       bp_class_ct_cp=None, bp_class_ct_sub_cp=None,
-                       bp_class_mr_cp=None, bp_class_mr_sub_cp=None):
+                       bp_class_ct_cp=None, bp_class_mr_cp=None):
 
         if data_sorting:
             workflow = self.sorting_workflow(
@@ -275,8 +269,7 @@ class DataCuration(BaseWorkflow):
                 rert_max_time=rert_max_time,
                 bp=body_parts, mrclass_cp=mrclass_cp,
                 mrclass_sub_cp=mrclass_sub_cp, bp_class_ct_cp=bp_class_ct_cp,
-                bp_class_ct_sub_cp=bp_class_ct_sub_cp,
-                bp_class_mr_cp=bp_class_mr_cp, bp_class_mr_sub_cp=bp_class_mr_sub_cp)
+                bp_class_mr_cp=bp_class_mr_cp)
         else:
             workflow = self.convertion_workflow()
 

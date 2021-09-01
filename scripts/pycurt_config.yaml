@@ -27,7 +27,6 @@ subject-name-position: 6
 # for hnc, hncKM and abd-pel. For the other parts, you will only
 # get CT and RT data sorted.
 body_part:
-    - 'hncKM'
     - 'hnc'
 
 # If you do not want to run the data convertion after sorting,

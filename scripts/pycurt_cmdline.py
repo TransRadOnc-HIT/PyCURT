@@ -11,6 +11,14 @@ from nipype import config
 cfg = dict(execution={'hash_method': 'timestamp'})
 config.update_config(cfg)
 
+PARENT_DIR =  '/media/fsforazz/T7/bp_class_checkpoints'
+
+bpclass_ct_cp = {'abd-pel':PARENT_DIR+'/ct/checkpoint_abd-pel_acc_0.97.pth',
+            'lung':PARENT_DIR+'/ct/checkpoint_lung_acc_0.97.pth',
+            'hnc':PARENT_DIR+'/ct/checkpoint_hnc_acc_0.99.pth'}
+
+bpclass_mr_cp = {'abd-pel':PARENT_DIR+'/mr/checkpoint_mr_abd-pel_acc_0.94.pth',
+            'hnc':PARENT_DIR+'/mr/checkpoint_mr_hnc_acc_0.94.pth'}
 
 def main():
 
@@ -35,16 +43,16 @@ def main():
     if PARAMETER_CONFIG['data_sorting']:
         mr_body_part = [x for x in PARAMETER_CONFIG['body_part']
                         if x in ['hnc', 'abd-pel']]
-        bpclass_ct_cp, bpclass_ct_sub_cp = download_cl_network_weights(
-            todownload='bpclass_ct')
-        if mr_body_part:
-            bpclass_mr_cp, bpclass_mr_sub_cp = download_cl_network_weights(
-                todownload='bpclass_mr')
-            mrclass_cp, mrclass_sub_cp = download_cl_network_weights(
-                todownload='mrclass_{}'.format(mr_body_part[0]))
-        else:
-            bpclass_mr_cp, bpclass_mr_sub_cp = None, None
-            mrclass_cp, mrclass_sub_cp = None, None
+#         bpclass_ct_cp, bpclass_ct_sub_cp = download_cl_network_weights(
+#             todownload='bpclass_ct')
+#         if mr_body_part:
+#             bpclass_mr_cp, bpclass_mr_sub_cp = download_cl_network_weights(
+#                 todownload='bpclass_mr')
+#             mrclass_cp, mrclass_sub_cp = download_cl_network_weights(
+#                 todownload='mrclass_{}'.format(mr_body_part[0]))
+#         else:
+#             bpclass_mr_cp, bpclass_mr_sub_cp = None, None
+#             mrclass_cp, mrclass_sub_cp = None, None
 
         if not os.path.isdir(os.path.join(ARGS.work_dir, 'nipype_cache')):
             check_free_space(BASE_DIR, ARGS.work_dir)
@@ -58,9 +66,8 @@ def main():
             mrrt_max_time_diff=PARAMETER_CONFIG['mrrt-max-time-diff'],
             rert_max_time=PARAMETER_CONFIG['replanning_rt-max-time-diff'],
             body_parts=PARAMETER_CONFIG['body_part'],
-            mrclass_cp=mrclass_cp, mrclass_sub_cp=mrclass_sub_cp,
-            bp_class_ct_cp=bpclass_ct_cp, bp_class_ct_sub_cp=bpclass_ct_sub_cp,
-            bp_class_mr_cp=bpclass_mr_cp, bp_class_mr_sub_cp=bpclass_mr_sub_cp)
+            mrclass_cp=[], mrclass_sub_cp=[],
+            bp_class_ct_cp=bpclass_ct_cp, bp_class_mr_cp=bpclass_mr_cp)
         workflow.runner(wf)
         BASE_DIR = os.path.join(ARGS.work_dir, 'workflows_output', 'Sorted_Data')
         sub_list, BASE_DIR = create_subject_list(BASE_DIR, subjects_to_process=[])

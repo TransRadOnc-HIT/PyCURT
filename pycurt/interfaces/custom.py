@@ -1,7 +1,6 @@
 import glob
 import pydicom
 import os
-import shutil
 import nibabel as nib
 import subprocess as sp
 import numpy as np
@@ -10,12 +9,10 @@ from nipype.interfaces.base import (
     BaseInterface, TraitedSpec, Directory,
     BaseInterfaceInputSpec, traits, InputMultiPath)
 from nipype.interfaces.base import isdefined
-from torchvision import transforms
 import torch
 from torch.utils.data import DataLoader
 from pycurt.utils.torch import (
-    resize_2Dimage, ZscoreNormalization, ToTensor,
-    load_checkpoint, MRClassifierDataset)
+    load_checkpoint, MRClassifierDataset_inference)
 import nrrd
 import cv2
 from scipy.ndimage.interpolation import rotate
@@ -23,6 +20,7 @@ from scipy import ndimage
 from skimage.measure import label, regionprops
 from core.utils.filemanip import split_filename
 import matplotlib.pyplot as plot
+from pycurt.classifier.inference import run_inference
 
 
 ExplicitVRLittleEndian = '1.2.840.10008.1.2.1'
@@ -395,32 +393,10 @@ class ImageClassification(BaseInterface):
     def _run_interface(self, runtime):
         
         checkpoints = self.inputs.checkpoints
-        sub_checkpoints = self.inputs.sub_checkpoints
         images2label = self.inputs.images2label
-#         output_dir = os.path.abspath(self.inputs.out_folder)
         body_part = self.inputs.body_part
         cl_network = self.inputs.network
         modality = self.inputs.modality
-
-#         images2label = {} 
-#         if images2label_list and isinstance(images2label_list, list):
-#             if isinstance(images2label_list[0], dict):
-#                 images2label = images2label_list[0]
-#             else:
-#                 images2label[modality] = images2label_list
-#         elif isinstance(images2label_list, dict):
-#             images2label = images2label_list
-            
-#         if cl_network == 'mrclass' and 'MR' in images2label.keys():
-#             mr_modality = {}
-#             mr_modality['MR'] = images2label['MR']
-#             images2label = mr_modality
-#         elif cl_network == 'mrclass':
-#             images2label = {}
-        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-        data_transforms = transforms.Compose(
-            [resize_2Dimage(224), ZscoreNormalization(), ToTensor()])
 
         labeled_images = defaultdict()
         self.labelled_images = {}
@@ -428,75 +404,9 @@ class ImageClassification(BaseInterface):
         for modality in images2label.keys():
             self.output_dict[modality] = {}
             for_inference = images2label[modality]
-#             #iteration through the different models
-            labeled = defaultdict(list)
-            for cl in checkpoints.keys():
-                model, class_names, scan = load_checkpoint(checkpoints[cl])
-                class_names[1] = '@lL'
-                test_dataset = MRClassifierDataset(
-                    list_images=for_inference, transform=data_transforms,
-                    class_names=class_names, scan = scan)
-                test_dataloader = DataLoader(test_dataset, batch_size = 1, shuffle=False,
-                                             num_workers=1)
-                for step, data in enumerate(test_dataloader):
-                    inputs = data['image']
-                    img_name = data['fn']
-                    inputs = inputs.to(device)
-                    output = model(inputs)
-                    prob = output.data.cpu().numpy()
-                    actRange = abs(prob[0][0])+abs(prob[0][1])
-                    index = output.data.cpu().numpy().argmax()
-                    if index == 0:
-                        labeled[img_name[0]].append([cl, actRange])
-                          
-            # check double classification and compare the activation value of class 0
-            for key in labeled.keys():
-                r = 0
-                j = 0
-                for i in range(len(labeled[key])-1):
-                    if labeled[key][i][1] > r:
-                        r = labeled[key][i][1]
-                        j = i
-                labeled[key] = labeled[key].pop(j)
-                      
-            # check for the unlabeled images
-            not_labeled = list(set(for_inference) - set(list(labeled.keys())))
-            for img in not_labeled:
-                labeled[img] = ['other', 0]
-                      
-            # prepare for subclassification   
-            labeled_images[modality] = defaultdict(list)
-            for key in labeled.keys():
-                labeled_images[modality][labeled[key][0]].append(key)
-                              
-            # subclassification        
-            labeled_sub = defaultdict(list)
-                      
-            for cl in sub_checkpoints.keys():
-                model, class_names, scan = load_checkpoint(sub_checkpoints[cl])
-                test_dataset = MRClassifierDataset(list_images = labeled_images[modality][cl], 
-                                                   transform = data_transforms,
-                                                   class_names = class_names, scan = scan, 
-                                                   subclasses = True)
-                test_dataloader = DataLoader(test_dataset, batch_size = 1,
-                                             shuffle=False, num_workers=1)
-                for step, data in enumerate(test_dataloader):
-                    inputs = data['image']
-                    img_name = data['fn']
-                    inputs = inputs.to(device)
-                    output = model(inputs)
-                    prob = output.data.cpu().numpy()
-                    actRange = abs(prob[0][0])+abs(prob[0][1])
-                    index = output.data.cpu().numpy().argmax()
-                    if index == 1:
-                        c = 'KM'
-                    else:
-                        c = ''
-                    labeled_sub[img_name[0]] = [cl+c, actRange]
-                               
-            for key in labeled_sub.keys():
-                labeled[key] = labeled_sub[key]
-                        
+            labeled = run_inference(for_inference, checkpoints, modality=modality.lower(),
+                                    body_parts=body_part)
+
 #             with open('/home/fsforazz/ww.pickle{}{}'.format(cl_network, modality), 'wb') as f:
 #                 pickle.dump(labeled, f, protocol=pickle.HIGHEST_PROTOCOL)
 #                    
@@ -508,12 +418,15 @@ class ImageClassification(BaseInterface):
                 labeled_images[modality][labeled[key][0]].append([key, labeled[key][1]])
 
             bps_of_interest = [x for x in labeled_images[modality].keys() if x in body_part]
-            if cl_network == 'bpclass' and modality == 'MR':
+            tmp_labelled = {}
+            if cl_network == 'bpclass' and modality.lower() == 'mr':
                 self.labelled_images[modality] = []
+                tmp_labelled[modality] = {}
                 for bp in bps_of_interest:
+                    tmp_labelled[modality][bp] = labeled_images[modality][bp]
                     imgs = [x[0] for x in labeled_images[modality][bp]]
                     self.labelled_images[modality] = self.labelled_images[modality]+imgs
-            elif cl_network == 'bpclass' and modality == 'CT':
+            elif cl_network == 'bpclass' and modality.lower() == 'ct':
                 self.labelled_images[modality] = {}
                 for bp in bps_of_interest:
                     self.labelled_images[modality][bp] = labeled_images[modality][bp]
@@ -537,18 +450,12 @@ class ImageClassification(BaseInterface):
                 for key in self.labelled_images[modality].keys():
                     if key != 'other':
                         self.output_dict[modality][key] = self.labelled_images[modality][key]
+            elif cl_network == 'bpclass' and modality == 'MR':
+                for key in tmp_labelled[modality].keys():
+                    if key != 'other':
+                        self.output_dict[modality][key] = tmp_labelled[modality][key]
             else:
                 self.output_dict[modality] = None
-            
-#                         for cm in self.labelled_images[modality][key]:
-#                             indices = [i for i, x in enumerate(cm[0]) if x == "/"]
-#                             if modality == 'MR':
-#                                 dirName = os.path.join(
-#                                     output_dir, cm[0][indices[-3]+1:indices[-1]], key)
-#                             else:
-#                                 dirName = os.path.join(
-#                                     output_dir, cm[0][indices[-4]+1:indices[-1]])
-#                             create_move_toDir(cm[0], dirName, cm[1])
 
         return runtime
 
