@@ -69,7 +69,6 @@ def run_inference(for_inference, filepaths, modality='ct', body_parts=[], th=Non
 
     result_dict = {}
     for el, image in enumerate(for_inference):
-        result_dict[image] = {}
         print('Process # {}, image: {}'.format(el+1, image))
         try:
             preproc_images = run_preprocessing([image], modality)
@@ -79,6 +78,7 @@ def run_inference(for_inference, filepaths, modality='ct', body_parts=[], th=Non
         if preproc_images is None:
             print('Image has only one slice, it will be ignored!')
             continue
+        result_dict[image] = {}
         slices_all = extract_slices_inference(preproc_images, directions)
         slice_labels = {}
         labs = []

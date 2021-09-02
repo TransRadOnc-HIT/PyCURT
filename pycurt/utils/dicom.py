@@ -120,6 +120,10 @@ def dcm_info(dcm_folder):
             print ('{} seems to do not have a readable DICOM header and '
                    'will be removed from the folder'.format(dcm))
             toRemove.append(dcm)
+        except sp.CalledProcessError:
+            print ('{} cannot be decompressed using GDCM and '
+                   'will be removed from the folder'.format(dcm))
+            toRemove.append(dcm)
     # the following lines are to check whether or not there are 2 set of exactly the same DICOM files in the folder
     if (len(InstanceNums) == 2*(len(set(InstanceNums)))) and len(set(SeriesNums)) == 1:
         sortedInstanceNums = sorted(zip(dicoms, InstanceNums), key=itemgetter(1))

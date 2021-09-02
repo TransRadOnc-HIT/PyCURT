@@ -484,10 +484,13 @@ class FileCheck(BaseInterface):
                         sub_name = filename.split('/')[sub_name_position]
                         patient_names[key].append(sub_name)
                     try:
-                        scan_dates[key].append(ds.StudyDate)
+                        scan_dates[key].append(ds.InstanceCreationDate)
                     except:
-                        iflogger.info('No study date for {}'.format(filename))
-                        scan_dates[key].append('Corrupted')
+                        try:
+                            scan_dates[key].append(ds.StudyDate)
+                        except:
+                            iflogger.info('No study date for {}'.format(filename))
+                            scan_dates[key].append('Corrupted')
                     z += 1
         names = [patient_names[x][0] for x in patient_names.keys()]
         for s in set(names):
@@ -755,7 +758,8 @@ class FolderMerge(BaseInterface):
                         os.makedirs(other_dir)
                         [shutil.copytree(x, os.path.join(other_dir, x.split('/')[-1]))
                          for x in rt_dict[rt_tp]['other_rts']]
-                if 'rtct' in rt_dict[rt_tp].keys():
+                if ('rtct' in rt_dict[rt_tp].keys() and
+                        rt_dict[rt_tp]['rtct'] is not None):
                     rtct_dir = os.path.join(
                         out_dir, sub_name, session, 'RTCT')
                     os.makedirs(os.path.join(rtct_dir, '1-BPLCT_Used'),
