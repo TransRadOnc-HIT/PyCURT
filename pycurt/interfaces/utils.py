@@ -599,8 +599,8 @@ class FolderPreparation(BaseInterface):
                     if len(dcm_files) > 10:
                         converter = DicomConverter(new_image)
                         nifti_image = converter.convert(rename_dicom=True, force=True)
-                        if nifti_image is not None:
-                            for_inference_ct['CT'].append(nifti_image)
+#                         if nifti_image is not None:
+#                             for_inference_ct['CT'].append(nifti_image)
 #                     else:
 #                         label_move_image(i, 'error_converting', out_dir,
 #                                          renaming=False)
@@ -619,14 +619,42 @@ class FolderPreparation(BaseInterface):
                     if good:
                         converter = DicomConverter(new_image)
                         nifti_image = converter.convert(rename_dicom=True)
-                        if nifti_image is not None:
-                            for_inference_mr['MR'].append(nifti_image)
+#                         if nifti_image is not None:
+#                             for_inference_mr['MR'].append(nifti_image)
 #                     else:
 #                         label_move_image(i, 'error_converting', out_dir,
 #                                          renaming=False)
 #                         iflogger.info('Error converting', str(new_image))
             else:
                 label_move_image(i, 'Unknown_modality', out_dir, renaming=False)
+
+        subs = glob.glob(input_dir+'/*')
+        for sub in subs:
+            images = [x for x in glob.glob(sub+'/*/*/*') if os.path.isdir(x)]
+            uids = [x.split('-')[-1] for x in images]
+            unique_uids = list(set(uids))
+            for uid in unique_uids:
+                dates = sorted([x.split('/')[-3] for x in images if uid in x])
+                unique_dates = list(set(dates))
+                if len(unique_dates) > 1:
+                    try:
+                        ct_date = [x.split('/')[-3] for x in images if 'CT/' in x][0]
+                    except:
+                        ct_date = dates[0]
+                    match = [x for x in images if uid in x]
+                    cp_dir = os.path.join(input_dir, sub, ct_date)
+                    for m in match:
+                        try:
+                            folder_name, fn = m.split('/')[-2:]
+                            shutil.copytree(m, os.path.join(cp_dir, folder_name, fn))
+                            shutil.rmtree(m)
+                        except FileExistsError:
+                            continue
+            for dirpath, _, _ in os.walk(sub):
+                if len(os.listdir(dirpath)) == 0:
+                    shutil.rmtree(dirpath)
+            for_inference_ct['CT'] = for_inference_ct['CT'] + sorted(glob.glob(sub+'/*/*/*.nii.gz'))
+            for_inference_mr['MR'] = for_inference_mr['MR'] + sorted(glob.glob(sub+'/*/*.nii.gz')) 
 
         return for_inference_ct, for_inference_mr
 
