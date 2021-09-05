@@ -182,12 +182,16 @@ class RTDataSorting(BaseInterface):
         except:
             rtstruct_instance=None
         try:
-            for i in range(0, len(ds.ReferencedDoseSequence)):
-                singleDose_instance = (ds.ReferencedDoseSequence[i]
-                                       .ReferencedSOPInstanceUID + '.dcm')
-                dose_cubes_instance.append(singleDose_instance)
-        except:
-            dose_cubes_instance = None
+            dose_seq = ds.ReferencedDoseSequence
+        except AttributeError:
+            try:
+                dose_seq = ds.DoseReferenceSequence
+                for i in range(0, len(dose_seq)):
+                    singleDose_instance = (ds.ReferencedDoseSequence[i]
+                                           .ReferencedSOPInstanceUID + '.dcm')
+                    dose_cubes_instance.append(singleDose_instance)
+            except AttributeError:
+                dose_cubes_instance = None
 
         plan_dir_old = os.path.split(plan_name)[0]
         plan_dir = os.path.join(out_dir, '1-RTPLAN_Used')
