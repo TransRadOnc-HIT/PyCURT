@@ -87,7 +87,7 @@ def main():
                 workflow.runner(wf)
             if PARAMETER_CONFIG['extract-rts']:
                 wd = os.path.join(ARGS.work_dir, 'workflows_output', 'DataCuration')
-                if os.path.isdir(wd):
+                if os.path.isdir(os.path.join(wd, sub_id)):
                     workflow = RadioTherapy(
                         sub_id=sub_id, input_dir=wd, work_dir=ARGS.work_dir,
                         process_rt=True, roi_selection=PARAMETER_CONFIG['select-rts'],

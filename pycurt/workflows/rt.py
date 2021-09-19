@@ -74,27 +74,30 @@ class RadioTherapy(BaseWorkflow):
             else:
                 roi_selection = False
             
-            ss_convert = nipype.Node(interface=RTStructureCoverter(),
-                                     name='ss_convert')
-            mha_convert = nipype.Node(interface=MHA2NIIConverter(),
-                                      name='mha_convert')
-
-            if roi_selection:
-                select = nipype.Node(interface=CheckRTStructures(),
-                                     name='select_gtv')
-                workflow.connect(mha_convert, 'out_files', select, 'rois')
-                workflow.connect(datasource, dose_name, select, 'dose_file')
-                workflow.connect(select, 'checked_roi', datasink,
-                                 'results.subid.{}.@masks'.format(key))
+            if rt_files['rtct'] is not None and rt_files['rtstruct'] is not None:
+                ss_convert = nipype.Node(interface=RTStructureCoverter(),
+                                         name='ss_convert')
+                mha_convert = nipype.Node(interface=MHA2NIIConverter(),
+                                          name='mha_convert')
+    
+                if roi_selection:
+                    select = nipype.Node(interface=CheckRTStructures(),
+                                         name='select_gtv')
+                    workflow.connect(mha_convert, 'out_files', select, 'rois')
+                    workflow.connect(datasource, dose_name, select, 'dose_file')
+                    workflow.connect(select, 'checked_roi', datasink,
+                                     'results.subid.{}.@masks'.format(key))
+                else:
+                    workflow.connect(mha_convert, 'out_files', datasink,
+                                     'results.subid.{}.@masks'.format(key))
+    
+                datasink.inputs.substitutions =substitutions
+            
+                workflow.connect(datasource, '{0}_rtct'.format(key), ss_convert, 'reference_ct')
+                workflow.connect(datasource, '{0}_rtstruct'.format(key), ss_convert, 'input_ss')
+                workflow.connect(ss_convert, 'out_structures', mha_convert, 'input_folder')
             else:
-                workflow.connect(mha_convert, 'out_files', datasink,
-                                 'results.subid.{}.@masks'.format(key))
-
-            datasink.inputs.substitutions =substitutions
-        
-            workflow.connect(datasource, '{0}_rtct'.format(key), ss_convert, 'reference_ct')
-            workflow.connect(datasource, '{0}_rtstruct'.format(key), ss_convert, 'input_ss')
-            workflow.connect(ss_convert, 'out_structures', mha_convert, 'input_folder')
+                print('NO RTCT OR RTSTRUCT!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
             
 #         if datasource is not None:
 # 

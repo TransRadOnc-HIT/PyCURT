@@ -157,8 +157,12 @@ class ConversionCheck(BaseInterface):
                     shutil.copy2(extra[1], os.path.join(base_dir, 'T2.nii.gz'))
                 converted_old.append(os.path.join(base_dir, 'T2.nii.gz'))
             else:
+                shutil.copy2(self.inputs.in_file[0],
+                            os.path.join(base_dir, '{}.nii.gz'.format(scan_name)))
                 to_remove += extra
-                converted = None
+                converted_old.append(os.path.join(base_dir, '{}.nii.gz'.format(scan_name)))
+#                 to_remove += extra
+#                 converted = None
         else:
             to_remove += extra
 

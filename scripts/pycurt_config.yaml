@@ -13,7 +13,7 @@ data_sorting: True
 # "/mnt/sdb/tosort/sub1/session1/image.dcm", will be 4
 # (or -3, remember that in Python numbering starts from 0).
 # By default, is the third position starting from the end of the path.
-subject-name-position: 6
+subject-name-position: 5
 
 # The body part(s) you are interested in. You can choose among:
 # -hnc: head and neck
@@ -27,7 +27,7 @@ subject-name-position: 6
 # for hnc, hncKM and abd-pel. For the other parts, you will only
 # get CT and RT data sorted.
 body_part:
-    - 'hnc'
+    - 'abd-pel'
 
 # If you do not want to run the data convertion after sorting,
 # then set this to False
