@@ -20,7 +20,9 @@ from scipy import ndimage
 from skimage.measure import label, regionprops
 from core.utils.filemanip import split_filename
 import matplotlib.pyplot as plot
-from pycurt.classifier.inference import run_inference
+from pycurt.classifier.inference import run_inference_bpclass,\
+    run_inference_mrclass
+from mrclass_resnet.infer import infer
 
 
 ExplicitVRLittleEndian = '1.2.840.10008.1.2.1'
@@ -172,7 +174,9 @@ class RTDataSorting(BaseInterface):
                         plan_date = plan_curr_plan_date
                         plan_time = plan_curr_plan_time
                         plan_name = f
-        if plan_name is None:
+        if plan_name is None and len(dcm_files) == 1:
+            plan_name = dcm_files[0]
+        elif plan_name is None and len(dcm_files) != 1: 
             return None, None, None, None
 
         ds = pydicom.dcmread(plan_name, force=True)
@@ -401,6 +405,7 @@ class ImageClassification(BaseInterface):
         body_part = self.inputs.body_part
         cl_network = self.inputs.network
         modality = self.inputs.modality
+        sub_checkpoints = self.inputs.sub_checkpoints
 
         labeled_images = defaultdict()
         self.labelled_images = {}
@@ -408,8 +413,13 @@ class ImageClassification(BaseInterface):
         for modality in images2label.keys():
             self.output_dict[modality] = {}
             for_inference = images2label[modality]
-            labeled = run_inference(for_inference, checkpoints, modality=modality.lower(),
-                                    body_parts=body_part)
+            if cl_network == 'bpclass':
+                labeled = run_inference_bpclass(
+                    for_inference, checkpoints, modality=modality.lower(),
+                    body_parts=body_part)
+            else:
+                labeled = run_inference_mrclass(
+                    for_inference, checkpoints, sub_checkpoints)
 
 #             with open('/home/fsforazz/ww.pickle{}{}'.format(cl_network, modality), 'wb') as f:
 #                 pickle.dump(labeled, f, protocol=pickle.HIGHEST_PROTOCOL)

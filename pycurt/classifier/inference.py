@@ -4,6 +4,10 @@ from pycurt.classifier.preprocessing import run_preprocessing
 from pycurt.classifier.dataloader import BpClassDataLoader2D
 from collections import Counter
 import matplotlib.pyplot as plot
+from mrclass_resnet.MRClassiferDataset import MRClassifierDataset
+from torch.utils.data import DataLoader
+from collections import defaultdict
+from mrclass_resnet.utils import load_checkpoint
 
 
 def extract_slices_inference(patient_data, directions):
@@ -30,7 +34,7 @@ def extract_slices_inference(patient_data, directions):
     return toinfer
 
 
-def load_checkpoint(filepath):
+def load_checkpoint_bpclass(filepath):
     
     if torch.cuda.is_available():
         map_location=lambda storage, loc: storage.cuda()
@@ -48,7 +52,7 @@ def load_checkpoint(filepath):
     return model
 
 
-def run_inference(for_inference, filepaths, modality='ct', body_parts=[], th=None):
+def run_inference_bpclass(for_inference, filepaths, modality='ct', body_parts=[], th=None):
 
     if modality == 'ct':
         directions = [1, 2, 3]
@@ -65,7 +69,7 @@ def run_inference(for_inference, filepaths, modality='ct', body_parts=[], th=Non
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model_dict = {}
     for key in filepaths:
-        model_dict[key] = load_checkpoint(filepaths[key])
+        model_dict[key] = load_checkpoint_bpclass(filepaths[key])
 
     result_dict = {}
     for el, image in enumerate(for_inference):
@@ -156,3 +160,77 @@ def run_inference(for_inference, filepaths, modality='ct', body_parts=[], th=Non
             result_dict[image][0], result_dict[image][1]))
 
     return result_dict
+
+
+def run_inference_mrclass(for_inference, checkpoints, sub_checkpoints):
+
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    # iteration through the different models
+    labeled = defaultdict(list)
+    for cl in checkpoints.keys():
+        model,class_names,scan = load_checkpoint(checkpoints[cl])
+        print('Classifying {0} MR scans'.format(class_names[0]))
+        class_names[1] = '@lL'
+       
+        test_dataset = MRClassifierDataset(list_images = for_inference, class_names = class_names,
+                                           scan = scan,infer = True,remove_corrupt= True)
+        test_dataloader = DataLoader(test_dataset, batch_size = 1, shuffle=False, num_workers=8)
+        for step, data in enumerate(test_dataloader):
+            inputs = data['image']
+            img_name = data['fn']
+            inputs = inputs.to(device)
+            output = model(inputs)
+            prob = output.data.cpu().numpy()
+            actRange = abs(prob[0][0])+abs(prob[0][1])
+            index = output.data.cpu().numpy().argmax()
+            if index == 1:
+                labeled[img_name[0]].append([cl,actRange])
+
+#check double classification and compare the activation value of class 0
+    labeled_cleaned = defaultdict(list)
+    for key in labeled.keys():
+        r = 0
+        j = 0
+        for i in range(len(labeled[key])):
+            if labeled[key][i][1] > r:
+                r = labeled[key][i][1]
+                j = i
+        labeled_cleaned[key] = labeled[key][j]
+
+    labeled_images = defaultdict(list)
+    for key in labeled_cleaned.keys():
+        labeled_images[labeled_cleaned[key][0]].append(key)
+        
+    # subclassification        
+    labeled_sub= defaultdict(list)
+    for cl in sub_checkpoints.keys():
+        
+        model,class_names,scan = load_checkpoint(sub_checkpoints[cl])
+        test_dataset = MRClassifierDataset(list_images = labeled_images[cl],
+                                           class_names = class_names, scan = scan, 
+                                           subclasses = True,infer = True)
+        print('Checking if contrast agent was administered for T1w scans' )
+        test_dataloader = DataLoader(test_dataset, batch_size = 1, shuffle=False, num_workers=8)
+        for step, data in enumerate(test_dataloader):
+            inputs = data['image']
+            img_name = data['fn']
+            inputs = inputs.to(device)
+            output = model(inputs)
+            prob = output.data.cpu().numpy()
+            actRange = abs(prob[0][0])+abs(prob[0][1])
+            index = output.data.cpu().numpy().argmax()
+            if index == 1:
+                c = '-CA'
+            else:
+                c = ''
+            labeled_sub[img_name[0]].append([cl+c,actRange])
+           
+    for key in labeled_sub.keys():
+        labeled_cleaned[key] = labeled_sub[key][0]
+
+    # check for the unlabeled images
+    not_labeled = list(set(for_inference) - set(list(labeled_cleaned.keys())))
+    for img in not_labeled:
+        labeled_cleaned[img] = ['other','NA']
+
+    return labeled_cleaned

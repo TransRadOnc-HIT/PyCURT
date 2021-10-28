@@ -488,7 +488,14 @@ class FileCheck(BaseInterface):
                         sub_name = filename.split('/')[sub_name_position]
                         patient_names[key].append(sub_name)
                     try:
-                        scan_dates[key].append(ds.InstanceCreationDate)
+                        if ds.InstanceCreationDate:
+                            scan_dates[key].append(ds.InstanceCreationDate)
+                        else:
+                            try:
+                                scan_dates[key].append(ds.StudyDate)
+                            except:
+                                iflogger.info('No study date for {}'.format(filename))
+                                scan_dates[key].append('Corrupted')
                     except:
                         try:
                             scan_dates[key].append(ds.StudyDate)

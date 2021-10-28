@@ -11,14 +11,23 @@ from nipype import config
 cfg = dict(execution={'hash_method': 'timestamp'})
 config.update_config(cfg)
 
-PARENT_DIR =  '/media/fsforazz/T7/bp_class_checkpoints'
+PARENT_DIR =  '/media/fsforazz/T7/classification_checkpoints'
 
-bpclass_ct_cp = {'abd-pel':PARENT_DIR+'/ct/checkpoint_abd-pel_acc_0.97.pth',
-            'lung':PARENT_DIR+'/ct/checkpoint_lung_acc_0.97.pth',
-            'hnc':PARENT_DIR+'/ct/checkpoint_hnc_acc_0.99.pth'}
+bpclass_ct_cp = {'abd-pel':PARENT_DIR+'/bp_class_ct/checkpoint_abd-pel_acc_0.97.pth',
+            'lung':PARENT_DIR+'/bp_class_ct/checkpoint_lung_acc_0.97.pth',
+            'hnc':PARENT_DIR+'/bp_class_ct/checkpoint_hnc_acc_0.99.pth'}
 
-bpclass_mr_cp = {'abd-pel':PARENT_DIR+'/mr/checkpoint_mr_abd-pel_acc_0.94.pth',
-            'hnc':PARENT_DIR+'/mr/checkpoint_mr_hnc_acc_0.94.pth'}
+bpclass_mr_cp = {'abd-pel':PARENT_DIR+'/bp_class_mr/checkpoint_mr_abd-pel_acc_0.94.pth',
+            'hnc':PARENT_DIR+'/bp_class_mr/checkpoint_mr_hnc_acc_0.94.pth'}
+
+mrclass_cp = {'T1': PARENT_DIR + '/mrclass/T1_other.pth',
+               'T2': PARENT_DIR +'/mrclass/T2_other.pth',
+               'FLAIR': PARENT_DIR+'/mrclass/FLAIR_other.pth',
+               'SWI': PARENT_DIR+'/mrclass/SWI_other.pth',
+               'ADC': PARENT_DIR+'/mrclass/ADC_other.pth',
+               }
+mrclass_sub_cp = { 'T1': PARENT_DIR  + '/mrclass/T1_T1KM.pth'}
+
 
 def main():
 
@@ -42,7 +51,7 @@ def main():
 
     if PARAMETER_CONFIG['data_sorting']:
         mr_body_part = [x for x in PARAMETER_CONFIG['body_part']
-                        if x in ['hnc', 'abd-pel']]
+                        if x in ['hnc']]
 #         bpclass_ct_cp, bpclass_ct_sub_cp = download_cl_network_weights(
 #             todownload='bpclass_ct')
 #         if mr_body_part:
@@ -66,7 +75,7 @@ def main():
             mrrt_max_time_diff=PARAMETER_CONFIG['mrrt-max-time-diff'],
             rert_max_time=PARAMETER_CONFIG['replanning_rt-max-time-diff'],
             body_parts=PARAMETER_CONFIG['body_part'],
-            mrclass_cp=[], mrclass_sub_cp=[],
+            mrclass_cp=mrclass_cp, mrclass_sub_cp=mrclass_sub_cp,
             bp_class_ct_cp=bpclass_ct_cp, bp_class_mr_cp=bpclass_mr_cp)
         workflow.runner(wf)
         BASE_DIR = os.path.join(ARGS.work_dir, 'workflows_output', 'Sorted_Data')

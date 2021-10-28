@@ -67,10 +67,11 @@ class DataCuration(BaseWorkflow):
                          subject_name_position=-3, renaming=False,
                          mrrt_max_time_diff=15, rert_max_time=42):
 
+        mr_classification = True
         mrclass_bp = [x for x in bp if x in ['hnc', 'abd-pel']]
-#         if not mrclass_bp:
-#             print('MRClass will not run')
-        mr_classification = False
+        if not mrclass_bp:
+            print('MRClass will not run')
+            mr_classification = False
         folder2merge = 3
         folder2merge_iterfields = ['in1', 'in2', 'in3']
 #         else:
@@ -132,6 +133,7 @@ class DataCuration(BaseWorkflow):
         workflow.connect(file_check, 'out_list', prep, 'input_list')
         workflow.connect(prep, 'out_folder', rt_sorting, 'input_dir')
         workflow.connect(prep, 'for_inference_ct', bp_class_ct, 'images2label')
+        workflow.connect(prep, 'for_inference_mr', bp_class_mr, 'images2label')
         workflow.connect(bp_class_ct, 'output_dict', mr_rt_merge, 'in1')
         workflow.connect(rt_sorting, 'output_dict', mr_rt_merge, 'in2')
         workflow.connect(mr_rt_merge, 'out', merging, 'input_list')
@@ -140,7 +142,6 @@ class DataCuration(BaseWorkflow):
             workflow.connect(bp_class_mr, 'labeled_images', mrclass, 'images2label')
             workflow.connect(mrclass, 'output_dict', mr_rt_merge, 'in3')
         else:
-            workflow.connect(prep, 'for_inference_mr', bp_class_mr, 'images2label')
             workflow.connect(bp_class_mr, 'output_dict', mr_rt_merge, 'in3')
         
         return workflow
