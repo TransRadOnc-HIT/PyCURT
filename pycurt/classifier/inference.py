@@ -61,7 +61,7 @@ def run_inference_bpclass(for_inference, filepaths, modality='ct', body_parts=[]
     elif modality == 'mr':
         directions = [3]
         if th is None:
-            th = 0.5
+            th = 0.3
 
     patch_size = (400, 400)
     class_names = filepaths.keys()
@@ -154,7 +154,10 @@ def run_inference_bpclass(for_inference, filepaths, modality='ct', body_parts=[]
                 else:
                     result_dict[image] = ["other", 0]     
             else:
-                result_dict[image] = [cn[0], 1]
+                if cn[0] in body_parts:
+                    result_dict[image] = [cn[0], 1]
+                else:
+                    result_dict[image] = ["other", 0]
 
         print('Image has been classified as "{}"  with probability of {}'.format(
             result_dict[image][0], result_dict[image][1]))
@@ -174,7 +177,7 @@ def run_inference_mrclass(for_inference, checkpoints, sub_checkpoints):
        
         test_dataset = MRClassifierDataset(list_images = for_inference, class_names = class_names,
                                            scan = scan,infer = True,remove_corrupt= True)
-        test_dataloader = DataLoader(test_dataset, batch_size = 1, shuffle=False, num_workers=8)
+        test_dataloader = DataLoader(test_dataset, batch_size = 1, shuffle=False, num_workers=1)
         for step, data in enumerate(test_dataloader):
             inputs = data['image']
             img_name = data['fn']

@@ -76,7 +76,10 @@ def main():
             rert_max_time=PARAMETER_CONFIG['replanning_rt-max-time-diff'],
             body_parts=PARAMETER_CONFIG['body_part'],
             mrclass_cp=mrclass_cp, mrclass_sub_cp=mrclass_sub_cp,
-            bp_class_ct_cp=bpclass_ct_cp, bp_class_mr_cp=bpclass_mr_cp)
+            bp_class_ct_cp=bpclass_ct_cp, bp_class_mr_cp=bpclass_mr_cp,
+            bp_class_ct_th=PARAMETER_CONFIG['bp_class_ct_th'],
+            bp_class_mr_th=PARAMETER_CONFIG['bp_class_mr_th'],
+            mr_classification=PARAMETER_CONFIG['mr_classification'])
         workflow.runner(wf)
         BASE_DIR = os.path.join(ARGS.work_dir, 'workflows_output', 'Sorted_Data')
         sub_list, BASE_DIR = create_subject_list(BASE_DIR, subjects_to_process=[])

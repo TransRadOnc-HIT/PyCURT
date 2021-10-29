@@ -22,7 +22,6 @@ from core.utils.filemanip import split_filename
 import matplotlib.pyplot as plot
 from pycurt.classifier.inference import run_inference_bpclass,\
     run_inference_mrclass
-from mrclass_resnet.infer import infer
 
 
 ExplicitVRLittleEndian = '1.2.840.10008.1.2.1'
@@ -372,7 +371,7 @@ class ImageClassificationInputSpec(BaseInterfaceInputSpec):
     sub_checkpoints = traits.Dict(
         desc='Classification network weights for within modality inference '
         '(i.e. for T1 vs T1KM classification).')
-    body_part = traits.List(['hnc', 'hncKM'], usdefault=True, desc=(
+    body_part = traits.List(['hnc'], usdefault=True, desc=(
         'Body part of interest. If provided, only the images '
         'labeled as this key will be considered for sorting. '
         'This is only used for bp_class classification.'
@@ -382,6 +381,9 @@ class ImageClassificationInputSpec(BaseInterfaceInputSpec):
         'Possible values are: bpclass or mrclass.'))
     out_folder = Directory('Labelled_dir', usedefault=True,
                            desc='Labelled sorted folder.')
+    probability_th = traits.Float(desc='Only images classified as the body part '
+                                  'of interest that have a probability higher '
+                                  'than this values will be selected.')
 
 
 class ImageClassificationOutputSpec(TraitedSpec):
@@ -406,6 +408,7 @@ class ImageClassification(BaseInterface):
         cl_network = self.inputs.network
         modality = self.inputs.modality
         sub_checkpoints = self.inputs.sub_checkpoints
+        probability_th = self.inputs.probability_th
 
         labeled_images = defaultdict()
         self.labelled_images = {}
@@ -416,7 +419,7 @@ class ImageClassification(BaseInterface):
             if cl_network == 'bpclass':
                 labeled = run_inference_bpclass(
                     for_inference, checkpoints, modality=modality.lower(),
-                    body_parts=body_part)
+                    body_parts=body_part, th=probability_th)
             else:
                 labeled = run_inference_mrclass(
                     for_inference, checkpoints, sub_checkpoints)

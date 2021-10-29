@@ -17,17 +17,29 @@ subject-name-position: 6
 
 # The body part(s) you are interested in. You can choose among:
 # -hnc: head and neck
-# -hncKM: head only (no neck)
 # -abd-pel: abdominal-pelvic
-# -wb: whole body (no head)
-# -wbKM: whole body plus head
-# -lung: lungs
+# -lung: lungs (only for bp_class_ct)
 # Multiple body parts of interest are allowed.
 # Please be aware that the MR image classification works only 
-# for hnc, hncKM and abd-pel. For the other parts, you will only
+# for hnc. For the other parts, you will only
 # get CT and RT data sorted.
 body_part:
     - 'hnc'
+
+# This is a probability threshold that the CT images classified
+# as the body part of interest have to pass in order to be 
+# saved in the final sorted folder.
+bp_class_ct_th: 0.33
+
+# This is a probability threshold that the MR images classified
+# as the body part of interest have to pass in order to be 
+# saved in the final sorted folder.
+bp_class_mr_th: 0.5
+
+# If True and there are some MR images classified as hnc 
+# (assuming it is the body part of interest), then MR-Class
+# will be run 
+mr_classification: True
 
 # If you do not want to run the data convertion after sorting,
 # then set this to False

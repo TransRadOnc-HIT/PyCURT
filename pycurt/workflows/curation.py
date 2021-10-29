@@ -65,11 +65,12 @@ class DataCuration(BaseWorkflow):
     def sorting_workflow(self, bp_class_mr_cp, mrclass_cp,
                          mrclass_sub_cp, bp_class_ct_cp, bp=['hnc', 'hncKM'],
                          subject_name_position=-3, renaming=False,
-                         mrrt_max_time_diff=15, rert_max_time=42):
+                         mrrt_max_time_diff=15, rert_max_time=42,
+                         bp_class_ct_th=0.33, bp_class_mr_th=0.5,
+                         mr_classification=True):
 
-        mr_classification = True
         mrclass_bp = [x for x in bp if x in ['hnc', 'abd-pel']]
-        if not mrclass_bp:
+        if mr_classification and not mrclass_bp:
             print('MRClass will not run')
             mr_classification = False
         folder2merge = 3
@@ -99,6 +100,7 @@ class DataCuration(BaseWorkflow):
         bp_class_ct.inputs.body_part = bp
         bp_class_ct.inputs.network = 'bpclass'
         bp_class_ct.inputs.modality = 'CT'
+        bp_class_ct.inputs.probability_th = bp_class_ct_th
         mr_rt_merge = nipype.MapNode(interface=Merge(folder2merge),
                                      name='mr_rt_merge',
                                      iterfield=folder2merge_iterfields)
@@ -125,6 +127,7 @@ class DataCuration(BaseWorkflow):
         bp_class_mr.inputs.body_part = mrclass_bp
         bp_class_mr.inputs.network = 'bpclass'
         bp_class_mr.inputs.modality = 'MR'
+        bp_class_mr.inputs.probability_th = bp_class_mr_th
 #         else:
 #             mr_rt_merge.inputs.in3 = 'None'
         rt_sorting = nipype.MapNode(interface=RTDataSorting(), name='rt_sorting',
@@ -260,7 +263,9 @@ class DataCuration(BaseWorkflow):
                        renaming=False, mrrt_max_time_diff=15,
                        rert_max_time=42, body_parts=['hnc'],
                        mrclass_cp=None, mrclass_sub_cp=None,
-                       bp_class_ct_cp=None, bp_class_mr_cp=None):
+                       bp_class_ct_cp=None, bp_class_mr_cp=None,
+                       bp_class_ct_th=0.33, bp_class_mr_th=0.5,
+                       mr_classification=True):
 
         if data_sorting:
             workflow = self.sorting_workflow(
@@ -270,7 +275,9 @@ class DataCuration(BaseWorkflow):
                 rert_max_time=rert_max_time,
                 bp=body_parts, mrclass_cp=mrclass_cp,
                 mrclass_sub_cp=mrclass_sub_cp, bp_class_ct_cp=bp_class_ct_cp,
-                bp_class_mr_cp=bp_class_mr_cp)
+                bp_class_mr_cp=bp_class_mr_cp, bp_class_ct_th=bp_class_ct_th,
+                bp_class_mr_th=bp_class_mr_th,
+                mr_classification=mr_classification)
         else:
             workflow = self.convertion_workflow()
 
