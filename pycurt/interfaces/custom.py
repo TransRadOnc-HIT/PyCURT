@@ -37,6 +37,48 @@ NotCompressedPixelTransferSyntaxes = [ExplicitVRLittleEndian,
 RESOURCES_PATH = os.path.abspath(os.path.join(os.path.split(__file__)[0],
                                  os.pardir, os.pardir, 'resources'))
 
+
+class PETDataSortingInputSpec(BaseInterfaceInputSpec):
+    
+    input_dir = Directory(exists=True, help='Input directory to sort.')
+    out_folder = Directory('PET_sorted_dir', usedefault=True,
+                           desc='RT data sorted folder.')
+
+
+class PETDataSortingOutputSpec(TraitedSpec):
+
+    output_dict = traits.Dict()
+
+
+class PETDataSorting(BaseInterface):
+    
+    input_spec = PETDataSortingInputSpec
+    output_spec = PETDataSortingOutputSpec
+    
+    def _run_interface(self, runtime):
+
+        input_dir = self.inputs.input_dir
+        
+        input_tp_folder = list(set([x for x in glob.glob(input_dir+'/*/*')
+                                    for y in glob.glob(x+'/*') if 'PET' in y]))
+
+        self.output_dict = {}
+        for tp_folder in input_tp_folder:
+            sub_name, tp = tp_folder.split('/')[-2:]
+            key_name = sub_name+'_'+tp
+            self.output_dict[key_name] = {}
+            if os.path.isdir(os.path.join(tp_folder, 'PET')):
+                self.output_dict[key_name]['PET'] = os.path.join(tp_folder, 'PET')
+        
+        return runtime
+    
+    def _list_outputs(self):
+        outputs = self._outputs().get()
+        if isdefined(self.inputs.out_folder):
+            outputs['output_dict'] = self.output_dict
+
+        return outputs
+
 class RTDataSortingInputSpec(BaseInterfaceInputSpec):
     
     input_dir = Directory(exists=True, help='Input directory to sort.')
@@ -145,6 +187,29 @@ class RTDataSorting(BaseInterface):
             elif hasattr(ds, 'IonBeamSequence'):
                 rt = ds.IonBeamSequence[0].RadiationType
             radiation_type[rt].append(f)
+        
+        approval_status = [(pydicom.dcmread(f, force=True)).ApprovalStatus
+                           for f in dcm_files if hasattr(pydicom.dcmread(
+                               f, force=True), 'ApprovalStatus')]
+
+#         if len(list(set(approval_status))) == 1 and approval_status[0] == 'UNAPPROVED':
+#             for f in dcm_files:
+#                 try:
+#                     ds = pydicom.dcmread(f, force=True)
+#                 except:
+#                     continue
+#                 if hasattr(ds, 'ApprovalStatus'):
+#                     ds.ApprovalStatus = 'APPROVED'
+        
+#         for f in dcm_files:
+#             try:
+#                 ds = pydicom.dcmread(f, force=True)
+#             except:
+#                 continue
+#             if hasattr(ds, 'ApprovalStatus'):
+#                 status_check = ds.ApprovalStatus
+#             else:
+#                 status_check = 'APPROVED'
 
         for f in dcm_files:
             try:
@@ -154,7 +219,11 @@ class RTDataSorting(BaseInterface):
             # check if RT plan has plan intent attribute and approval status
                 # .If no, default taken as curative and approved
             if hasattr(ds, 'ApprovalStatus'):
-                status_check = ds.ApprovalStatus
+                if (len(list(set(approval_status))) == 1 and
+                        approval_status[0] == 'UNAPPROVED'):
+                    status_check = 'APPROVED'
+                else:
+                    status_check = ds.ApprovalStatus
             else:
                 status_check = 'APPROVED'
             if hasattr(ds, 'PlanIntent '):
@@ -416,63 +485,65 @@ class ImageClassification(BaseInterface):
         for modality in images2label.keys():
             self.output_dict[modality] = {}
             for_inference = images2label[modality]
-            if cl_network == 'bpclass':
+            if for_inference and cl_network == 'bpclass':
                 labeled = run_inference_bpclass(
                     for_inference, checkpoints, modality=modality.lower(),
                     body_parts=body_part, th=probability_th)
-            else:
+            elif for_inference and cl_network == 'mrclass':
                 labeled = run_inference_mrclass(
                     for_inference, checkpoints, sub_checkpoints)
+            else:
+                labeled = []
 
 #             with open('/home/fsforazz/ww.pickle{}{}'.format(cl_network, modality), 'wb') as f:
 #                 pickle.dump(labeled, f, protocol=pickle.HIGHEST_PROTOCOL)
 #                    
 #             with open('/home/fsforazz/ww.pickle{}{}'.format(cl_network, modality), 'rb') as handle:
 #                 labeled = pickle.load(handle)
+            if labeled:
+                labeled_images[modality] = defaultdict(list)
+                for key in labeled.keys():
+                    labeled_images[modality][labeled[key][0]].append([key, labeled[key][1]])
     
-            labeled_images[modality] = defaultdict(list)
-            for key in labeled.keys():
-                labeled_images[modality][labeled[key][0]].append([key, labeled[key][1]])
-
-            bps_of_interest = [x for x in labeled_images[modality].keys() if x in body_part]
-            tmp_labelled = {}
-            if cl_network == 'bpclass' and modality.lower() == 'mr':
-                self.labelled_images[modality] = []
-                tmp_labelled[modality] = {}
-                for bp in bps_of_interest:
-                    tmp_labelled[modality][bp] = labeled_images[modality][bp]
-                    imgs = [x[0] for x in labeled_images[modality][bp]]
-                    self.labelled_images[modality] = self.labelled_images[modality]+imgs
-            elif cl_network == 'bpclass' and modality.lower() == 'ct':
-                self.labelled_images[modality] = {}
-                for bp in bps_of_interest:
-                    self.labelled_images[modality][bp] = labeled_images[modality][bp]
-            else:
-                self.labelled_images[modality] = labeled_images[modality]
-    
-            to_remove = []
-    
-            for i in for_inference:
-                image_dir = '/'.join(i.split('/')[:-1])
-                to_remove = to_remove + [x for x in glob.glob(image_dir+'/*')
-                                         if '.json' in x  or '.bval' in x
-                                         or '.bvec' in x]
-    
-            for f in to_remove:
-                if os.path.isfile(f):
-                    os.remove(f)
-                    
-            if ((cl_network == 'bpclass' and modality == 'CT') or 
-                    (modality == 'MR' and cl_network == 'mrclass')):
-                for key in self.labelled_images[modality].keys():
-                    if key != 'other':
-                        self.output_dict[modality][key] = self.labelled_images[modality][key]
-            elif cl_network == 'bpclass' and modality == 'MR':
-                for key in tmp_labelled[modality].keys():
-                    if key != 'other':
-                        self.output_dict[modality][key] = tmp_labelled[modality][key]
-            else:
-                self.output_dict[modality] = None
+                bps_of_interest = [x for x in labeled_images[modality].keys() if x in body_part]
+                tmp_labelled = {}
+                if cl_network == 'bpclass' and modality.lower() == 'mr':
+                    self.labelled_images[modality] = []
+                    tmp_labelled[modality] = {}
+                    for bp in bps_of_interest:
+                        tmp_labelled[modality][bp] = labeled_images[modality][bp]
+                        imgs = [x[0] for x in labeled_images[modality][bp]]
+                        self.labelled_images[modality] = self.labelled_images[modality]+imgs
+                elif cl_network == 'bpclass' and modality.lower() == 'ct':
+                    self.labelled_images[modality] = {}
+                    for bp in bps_of_interest:
+                        self.labelled_images[modality][bp] = labeled_images[modality][bp]
+                else:
+                    self.labelled_images[modality] = labeled_images[modality]
+        
+                to_remove = []
+        
+                for i in for_inference:
+                    image_dir = '/'.join(i.split('/')[:-1])
+                    to_remove = to_remove + [x for x in glob.glob(image_dir+'/*')
+                                             if '.json' in x  or '.bval' in x
+                                             or '.bvec' in x]
+        
+                for f in to_remove:
+                    if os.path.isfile(f):
+                        os.remove(f)
+                        
+                if ((cl_network == 'bpclass' and modality == 'CT') or 
+                        (modality == 'MR' and cl_network == 'mrclass')):
+                    for key in self.labelled_images[modality].keys():
+                        if key != 'other':
+                            self.output_dict[modality][key] = self.labelled_images[modality][key]
+                elif cl_network == 'bpclass' and modality == 'MR':
+                    for key in tmp_labelled[modality].keys():
+                        if key != 'other':
+                            self.output_dict[modality][key] = tmp_labelled[modality][key]
+                else:
+                    self.output_dict[modality] = None
 
         return runtime
 

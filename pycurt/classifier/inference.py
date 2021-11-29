@@ -213,7 +213,7 @@ def run_inference_mrclass(for_inference, checkpoints, sub_checkpoints):
                                            class_names = class_names, scan = scan, 
                                            subclasses = True,infer = True)
         print('Checking if contrast agent was administered for T1w scans' )
-        test_dataloader = DataLoader(test_dataset, batch_size = 1, shuffle=False, num_workers=8)
+        test_dataloader = DataLoader(test_dataset, batch_size = 1, shuffle=False, num_workers=1)
         for step, data in enumerate(test_dataloader):
             inputs = data['image']
             img_name = data['fn']

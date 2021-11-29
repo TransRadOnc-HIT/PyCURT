@@ -6,7 +6,8 @@ from nipype.interfaces.dcm2nii import Dcm2niix
 from pycurt.interfaces.plastimatch import DoseConverter
 from core.workflows.base import BaseWorkflow
 from pycurt.interfaces.utils import FolderPreparation, SinkSorting
-from pycurt.interfaces.custom import RTDataSorting, ImageClassification
+from pycurt.interfaces.custom import RTDataSorting, ImageClassification,\
+    PETDataSorting
 from nipype.interfaces.utility import Merge
 
 
@@ -73,8 +74,8 @@ class DataCuration(BaseWorkflow):
         if mr_classification and not mrclass_bp:
             print('MRClass will not run')
             mr_classification = False
-        folder2merge = 3
-        folder2merge_iterfields = ['in1', 'in2', 'in3']
+        folder2merge = 4
+        folder2merge_iterfields = ['in1', 'in2', 'in3', 'in4']
 #         else:
 #             mr_classiffication = True
 #             folder2merge = 3
@@ -132,13 +133,18 @@ class DataCuration(BaseWorkflow):
 #             mr_rt_merge.inputs.in3 = 'None'
         rt_sorting = nipype.MapNode(interface=RTDataSorting(), name='rt_sorting',
                                     iterfield=['input_dir'])
+        
+        pet_sorting = nipype.MapNode(interface=PETDataSorting(), name='pet_sorting',
+                                    iterfield=['input_dir'])
 
         workflow.connect(file_check, 'out_list', prep, 'input_list')
         workflow.connect(prep, 'out_folder', rt_sorting, 'input_dir')
+        workflow.connect(prep, 'out_folder', pet_sorting, 'input_dir')
         workflow.connect(prep, 'for_inference_ct', bp_class_ct, 'images2label')
         workflow.connect(prep, 'for_inference_mr', bp_class_mr, 'images2label')
         workflow.connect(bp_class_ct, 'output_dict', mr_rt_merge, 'in1')
         workflow.connect(rt_sorting, 'output_dict', mr_rt_merge, 'in2')
+        workflow.connect(pet_sorting, 'output_dict', mr_rt_merge, 'in4')
         workflow.connect(mr_rt_merge, 'out', merging, 'input_list')
         workflow.connect(merging, 'out_folder', datasink, 'tosink')
         if mr_classification:
