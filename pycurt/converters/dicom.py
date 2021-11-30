@@ -54,6 +54,8 @@ class DicomConverter(BaseConverter):
             raise NotImplementedError('The conversion from DICOM to {} has not been implemented yet.'
                                       .format(convert_to))
         try:
+            self.decompress_dicom()
+            print("decompressed")
             sp.check_output(self.bin_path+cmd, shell=True)
             if self.clean:
                 self.clean_dir()
@@ -73,7 +75,12 @@ class DicomConverter(BaseConverter):
             print('Conversion failed. Scan will be ignored.')
             return None
 
-        
+    def decompress_dicom(self):
+
+        files = glob.glob(self.basedir+'/*')
+        for dicom in files:
+            cmd = ("gdcmconv --raw {0} {1} ".format(dicom, dicom))
+            sp.check_output(cmd, shell=True)
 
     def clean_dir(self):
 

@@ -100,9 +100,9 @@ def dcm_info(dcm_folder):
     for dcm in dicoms:
         #Check whether the dicom is compressed, if yes decompress
         try:
-            if (pydicom.read_file(str(dcm)).file_meta.TransferSyntaxUID
-                    not in NotCompressedPixelTransferSyntaxes):
-                decompress_dicom(dcm)
+#             if (pydicom.read_file(str(dcm)).file_meta.TransferSyntaxUID
+#                     not in NotCompressedPixelTransferSyntaxes):
+            decompress_dicom(dcm)
 #         except InvalidDicomError:
 #             print ('{} seems to do not have a readable DICOM header and '
 #                    'will be removed from the folder'.format(dcm))

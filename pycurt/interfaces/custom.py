@@ -321,6 +321,8 @@ class RTDataSorting(BaseInterface):
             img_name = image.split('/')[-1]
             dcm_files=[os.path.join(image, item) for item in os.listdir(image)
                        if ('.dcm' in item)]
+            for f in dcm_files:
+                self.decompress_dicom(f)
             try:
                 ds = pydicom.dcmread(dcm_files[0],force=True)
                 series_instance_uid = ds.SeriesInstanceUID
@@ -420,6 +422,11 @@ class RTDataSorting(BaseInterface):
     def decompress_dose(self, i):
 
         cmd = ("dcmdjpeg {0} {1} ".format(i, i))
+        sp.check_output(cmd, shell=True)
+
+    def decompress_dicom(self,i):
+ 
+        cmd = ("gdcmconv --raw {0} {1} ".format(i, i))
         sp.check_output(cmd, shell=True)
 
     def _list_outputs(self):
