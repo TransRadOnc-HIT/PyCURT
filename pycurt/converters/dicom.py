@@ -54,8 +54,11 @@ class DicomConverter(BaseConverter):
             raise NotImplementedError('The conversion from DICOM to {} has not been implemented yet.'
                                       .format(convert_to))
         try:
-            self.decompress_dicom()
-            print("decompressed")
+            try:
+                self.decompress_dicom()
+                print("decompressed")
+            except:
+                pass
             sp.check_output(self.bin_path+cmd, shell=True)
             if self.clean:
                 self.clean_dir()
@@ -77,7 +80,7 @@ class DicomConverter(BaseConverter):
 
     def decompress_dicom(self):
 
-        files = glob.glob(self.basedir+'/*')
+        files = glob.glob(os.path.join(self.toConvert, '*'))
         for dicom in files:
             cmd = ("gdcmconv --raw {0} {1} ".format(dicom, dicom))
             sp.check_output(cmd, shell=True)

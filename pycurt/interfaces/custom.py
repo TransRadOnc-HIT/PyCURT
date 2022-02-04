@@ -173,6 +173,7 @@ class RTDataSorting(BaseInterface):
         dose_cubes_instance = []
         plan_name = None
         radiation_type = defaultdict(list)
+        rt = ''
 
         dcm_files = glob.glob(dir_name+'/*/*.dcm')
     
@@ -187,7 +188,7 @@ class RTDataSorting(BaseInterface):
             elif hasattr(ds, 'IonBeamSequence'):
                 rt = ds.IonBeamSequence[0].RadiationType
             radiation_type[rt].append(f)
-        
+
         approval_status = [(pydicom.dcmread(f, force=True)).ApprovalStatus
                            for f in dcm_files if hasattr(pydicom.dcmread(
                                f, force=True), 'ApprovalStatus')]
